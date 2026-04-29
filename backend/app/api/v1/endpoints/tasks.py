@@ -126,6 +126,25 @@ async def get_task(
     return task
 
 
+# ── Get source file presigned URL (for inline preview) ─────────────────────
+@router.get("/{task_id}/source-url")
+async def get_source_url(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a presigned download URL for the original uploaded file."""
+    task = await db.get(ParseTask, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    url = storage_service.generate_download_presigned_url(
+        task.input_s3_key,
+        filename=task.original_filename,
+    )
+    return {"download_url": url}
+
+
 # ── Get task results (download links) ────────────────────────────────────────
 @router.get("/{task_id}/results", response_model=TaskResultResponse)
 async def get_task_results(
