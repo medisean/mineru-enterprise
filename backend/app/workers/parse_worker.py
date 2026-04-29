@@ -189,6 +189,21 @@ def parse_document(self, task_id: str, input_s3_key: str, output_s3_prefix: str,
                         storage_service.upload_bytes(s3_key, f.read(), content_type)
                         uploaded_files.append(s3_key)
 
+            # Convert Office source files (PPTX/DOCX/XLSX) to PDF for preview
+            office_ext = _get_office_extension(input_s3_key)
+            if office_ext:
+                try:
+                    pdf_path = _convert_office_to_pdf(tmp_path)
+                    if pdf_path and os.path.exists(pdf_path):
+                        pdf_s3_key = f"{output_s3_prefix}/_preview/source_preview.pdf"
+                        with open(pdf_path, "rb") as pf:
+                            storage_service.upload_bytes(pdf_s3_key, pf.read(), "application/pdf")
+                            uploaded_files.append(pdf_s3_key)
+                        os.unlink(pdf_path)
+                        logger.info("Office→PDF preview generated", task_id=task_id)
+                except Exception as e:
+                    logger.warning("Office→PDF conversion failed, skipping preview", task_id=task_id, error=str(e))
+
         os.unlink(tmp_path)
         update_task_status("success", progress=100, output_prefix=output_s3_prefix)
         self.update_state(state="SUCCESS", meta={"progress": 100, "files": uploaded_files})
@@ -220,3 +235,39 @@ def _guess_content_type(filename: str) -> str:
         "tex": "application/x-latex",
     }
     return types.get(ext, "application/octet-stream")
+
+
+def _get_office_extension(s3_key: str) -> str | None:
+    """Return the office extension if the file is an Office document, else None."""
+    ext = s3_key.rsplit(".", 1)[-1].lower() if "." in s3_key else ""
+    office_exts = {"pptx", "ppt", "docx", "doc", "xlsx", "xls"}
+    return ext if ext in office_exts else None
+
+
+def _convert_office_to_pdf(input_path: str) -> str | None:
+    """Convert an Office file to PDF using LibreOffice headless. Returns the PDF path or None."""
+    import subprocess
+    output_dir = tempfile.mkdtemp()
+    try:
+        result = subprocess.run(
+            [
+                "libreoffice", "--headless", "--convert-to", "pdf",
+                "--outdir", output_dir,
+                input_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            logger.warning("LibreOffice conversion failed", stderr=result.stderr[:500])
+            return None
+
+        # Find the generated PDF
+        for fname in os.listdir(output_dir):
+            if fname.endswith(".pdf"):
+                return os.path.join(output_dir, fname)
+        return None
+    except Exception as e:
+        logger.warning("LibreOffice conversion exception", error=str(e))
+        return None

@@ -123,6 +123,7 @@ export default function TaskDetailPage() {
     enabled: task?.status === "success",
   });
   const sourceFileUrl = sourceUrlData?.download_url;
+  const previewType = sourceUrlData?.preview_type; // "pdf" | "original"
 
   const copyContent = async () => {
     const text = resultTab === "markdown"
@@ -316,6 +317,14 @@ export default function TaskDetailPage() {
                 style={{ width: `${zoom}%` }}
               />
             ) : sourceIsOffice && originFileUrl ? (
+              previewType === "pdf" ? (
+                <iframe
+                  src={originFileUrl}
+                  className="bg-white shadow-lg rounded"
+                  style={{ width: `${zoom}%`, height: "100%", minHeight: 600, border: "none" }}
+                  title={`${officeType} PDF 预览`}
+                />
+              ) : (
               <div className="flex flex-col items-center justify-center h-full text-center py-20 w-full">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-sm w-full">
                   <div className="w-16 h-16 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -337,6 +346,7 @@ export default function TaskDetailPage() {
                   </a>
                 </div>
               </div>
+              )
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center py-20">
                 <FileText className="h-16 w-16 text-gray-200 mb-4" />

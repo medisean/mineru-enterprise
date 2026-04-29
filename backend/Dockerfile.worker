@@ -1,4 +1,4 @@
-# MinerU worker image — includes full MinerU model dependencies
+# MinerU worker image — includes full MinerU model dependencies + LibreOffice for Office→PDF preview
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libldap2-dev libsasl2-dev \
     poppler-utils \
     curl wget \
+    libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-worker.txt ./

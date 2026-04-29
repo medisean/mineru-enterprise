@@ -127,6 +127,9 @@ async def get_task(
 
 
 # ── Get source file presigned URL (for inline preview) ─────────────────────
+OFFICE_EXTENSIONS = {"pptx", "ppt", "docx", "doc", "xlsx", "xls"}
+
+
 @router.get("/{task_id}/source-url")
 async def get_source_url(
     task_id: str,
@@ -134,17 +137,38 @@ async def get_source_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Return a presigned download URL for the original uploaded file.
-    Uses inline Content-Disposition so browsers can attempt to preview."""
+    For Office files, returns the converted PDF preview if available."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    ext = task.original_filename.rsplit(".", 1)[-1].lower() if "." in task.original_filename else ""
+    is_office = ext in OFFICE_EXTENSIONS
+
+    # For Office files, try to find the converted PDF preview first
+    if is_office and task.output_s3_prefix:
+        preview_key = f"{task.output_s3_prefix}/_preview/source_preview.pdf"
+        try:
+            # Check if the PDF preview exists in S3
+            objects = storage_service.list_objects(f"{task.output_s3_prefix}/_preview/")
+            for obj in objects:
+                if obj["key"] == preview_key:
+                    url = storage_service.generate_download_presigned_url(
+                        preview_key,
+                        filename=task.original_filename.rsplit(".", 1)[0] + ".pdf",
+                        inline_disposition=True,
+                    )
+                    return {"download_url": url, "preview_type": "pdf"}
+        except Exception:
+            pass
+
+    # Fallback: return the original file URL
     url = storage_service.generate_download_presigned_url(
         task.input_s3_key,
         filename=task.original_filename,
         inline_disposition=True,
     )
-    return {"download_url": url}
+    return {"download_url": url, "preview_type": "original"}
 
 
 # ── Get task results (download links) ────────────────────────────────────────
