@@ -1,0 +1,21 @@
+# MinerU worker image — includes full MinerU model dependencies
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libmagic1 libgl1 libglib2.0-0 \
+    libldap2-dev libsasl2-dev \
+    poppler-utils \
+    curl wget \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-worker.txt ./
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+# Pre-download MinerU models during image build (optional)
+# RUN python -c "from mineru.utils.model_downloader import download_models; download_models()"
+
+COPY . .
+
+CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse", "-c", "2", "--loglevel=info"]

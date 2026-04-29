@@ -1,0 +1,8 @@
+# Includes all API requirements + MinerU
+-r requirements.txt
+
+# MinerU (latest v3 series)
+mineru>=3.0.0
+
+# Flower for monitoring
+flower==2.0.1
