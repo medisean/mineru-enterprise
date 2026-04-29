@@ -3,21 +3,42 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# System deps: build tools + runtime libs + LibreOffice + CJK fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libmagic1 libgl1 libglib2.0-0 \
+    gcc g++ cmake libmagic1 libgl1 libglib2.0-0 \
     libldap2-dev libsasl2-dev \
     poppler-utils \
     curl wget \
     libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui \
-    # CJK fonts for LibreOffice PDF conversion (avoid missing character boxes)
     fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Install PyTorch CPU-only first (large layer, cache-friendly) ────────
+# On aarch64 (ARM64) the default PyPI wheel is already CPU-only.
+# Pin a known-good version to avoid surprise breakage.
+ARG TORCH_VERSION=2.7.0
+RUN pip install --no-cache-dir \
+    torch==${TORCH_VERSION} \
+    torchvision \
+    --index-url https://download.pytorch.org/whl/cpu || \
+    pip install --no-cache-dir \
+    torch==${TORCH_VERSION} \
+    torchvision
+
+# ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
 COPY requirements.txt requirements-worker.txt ./
 RUN pip install --no-cache-dir -r requirements-worker.txt
 
-# Pre-download MinerU models during image build (optional)
-# RUN python -c "from mineru.utils.model_downloader import download_models; download_models()"
+# Pre-download MinerU pipeline models during build.
+# First run otherwise takes 3-5 min to download from HuggingFace/ModelScope.
+# Models are cached in ~/.cache/huggingface/hub/
+RUN python -c "\
+import os; \
+os.environ['MINERU_DEVICE']='cpu'; \
+from mineru.backend.pipeline.model_init import MineruPipelineModel; \
+model = MineruPipelineModel(device='cpu', lang='ch'); \
+print('MinerU pipeline models pre-downloaded OK')" \
+|| echo "WARN: model pre-download failed, will download on first run"
 
 COPY . .
 
