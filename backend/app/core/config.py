@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # ── S3 / Object Storage ───────────────────────────────────────────────
     S3_ENDPOINT_URL: Optional[str] = None      # None = AWS, or MinIO/OSS endpoint
+    S3_EXTERNAL_URL: Optional[str] = None      # URL accessible from browser (for presigned URLs)
     S3_ACCESS_KEY_ID: str = ""
     S3_SECRET_ACCESS_KEY: str = ""
     S3_REGION_NAME: str = "us-east-1"

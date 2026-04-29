@@ -38,7 +38,7 @@ class StorageService:
                 },
                 ExpiresIn=expires or settings.S3_PRESIGN_EXPIRE_SECONDS,
             )
-            return url
+            return self._rewrite_external_url(url)
         except ClientError as e:
             logger.error("Failed to generate upload presigned URL", key=key, error=str(e))
             raise
@@ -49,14 +49,21 @@ class StorageService:
         if filename:
             params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
         try:
-            return self.client.generate_presigned_url(
+            url = self.client.generate_presigned_url(
                 "get_object",
                 Params=params,
                 ExpiresIn=expires or settings.S3_PRESIGN_EXPIRE_SECONDS,
             )
+            return self._rewrite_external_url(url)
         except ClientError as e:
             logger.error("Failed to generate download presigned URL", key=key, error=str(e))
             raise
+
+    def _rewrite_external_url(self, url: str) -> str:
+        """Replace internal S3 endpoint with external URL for browser access."""
+        if settings.S3_EXTERNAL_URL and settings.S3_ENDPOINT_URL:
+            return url.replace(settings.S3_ENDPOINT_URL, settings.S3_EXTERNAL_URL, 1)
+        return url
 
     def upload_bytes(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
         """Upload bytes directly (used by worker to save results)."""
