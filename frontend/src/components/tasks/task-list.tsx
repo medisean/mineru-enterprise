@@ -7,9 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { tasksApi } from "@/lib/api";
+import { apiClient } from "@/lib/api";
 import {
   CheckCircle2, XCircle, Clock, Loader2, Download, FileText,
-  ChevronLeft, ChevronRight, Filter,
+  ChevronLeft, ChevronRight, Filter, RotateCcw,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -68,6 +69,7 @@ function getFileIconColor(filename: string): string {
 function TaskRow({ task }: { task: Task }) {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (task.status !== "pending" && task.status !== "processing") return;
@@ -97,6 +99,21 @@ function TaskRow({ task }: { task: Task }) {
 
     return () => ws.close();
   }, [task.id, task.status, queryClient]);
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await apiClient.post(`/api/v1/tasks/${task.id}/retry`);
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    } catch {
+      // silently fail — user can go to detail page for more info
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const statusCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
   const fileSizeMB = (task.file_size_bytes / 1024 / 1024).toFixed(1);
@@ -142,12 +159,22 @@ function TaskRow({ task }: { task: Task }) {
           查看结果
         </Link>
       ) : task.status === "failed" ? (
-        <Link
-          href={`/dashboard/tasks/${task.id}`}
-          className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-        >
-          详情
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+            {retrying ? "重试中" : "重试"}
+          </button>
+          <Link
+            href={`/dashboard/tasks/${task.id}`}
+            className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            详情
+          </Link>
+        </div>
       ) : null}
     </div>
   );

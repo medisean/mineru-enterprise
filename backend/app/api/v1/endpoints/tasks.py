@@ -153,6 +153,53 @@ async def get_task_results(
     return TaskResultResponse(task_id=task_id, status=task.status.value, files=files)
 
 
+# ── Retry a failed/cancelled task ─────────────────────────────────────────
+@router.post("/{task_id}/retry", response_model=TaskOut)
+async def retry_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retry a failed or cancelled task — resets status and re-dispatches to Celery."""
+    task = await db.get(ParseTask, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in (TaskStatus.FAILED, TaskStatus.CANCELLED):
+        raise HTTPException(status_code=400, detail="Only failed or cancelled tasks can be retried")
+
+    # Reset task state
+    task.status = TaskStatus.PENDING
+    task.progress = 0
+    task.error_message = None
+    task.started_at = None
+    task.completed_at = None
+    # Generate a fresh output prefix so old results don't collide
+    task.output_s3_prefix = f"results/{current_user.id}/{uuid.uuid4()}"
+    task.celery_task_id = None
+    await db.commit()
+    await db.refresh(task)
+
+    # Re-dispatch to Celery
+    celery_task = parse_document.apply_async(
+        args=[task.id, task.input_s3_key, task.output_s3_prefix, {
+            "backend": task.backend,
+            "output_format": task.output_format,
+            "language": task.language,
+            "is_ocr": task.is_ocr,
+            "enable_formula": task.enable_formula,
+            "enable_table": task.enable_table,
+            "page_ranges": task.page_ranges,
+            "parse_options": None,
+        }],
+        queue="parse",
+    )
+    task.celery_task_id = celery_task.id
+    await db.commit()
+    await db.refresh(task)
+
+    return task
+
+
 # ── Cancel task ───────────────────────────────────────────────────────────────
 @router.delete("/{task_id}")
 async def cancel_task(

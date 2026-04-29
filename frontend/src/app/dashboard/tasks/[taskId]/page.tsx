@@ -10,7 +10,7 @@ import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
-  RefreshCw, Clock, AlertCircle, ExternalLink,
+  RefreshCw, Clock, AlertCircle, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -58,6 +58,7 @@ export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [activeTab, setActiveTab] = useState<"preview" | "files">("preview");
 
   const { data: task, isLoading, isError, refetch } = useQuery({
@@ -86,6 +87,19 @@ export default function TaskDetailPage() {
       await navigator.clipboard.writeText(preview.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await apiClient.post(`/api/v1/tasks/${taskId}/retry`);
+      refetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "重试失败，请稍后再试");
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -194,6 +208,24 @@ export default function TaskDetailPage() {
             <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
               <p className="text-xs text-red-600 font-medium mb-1">解析失败</p>
               <p className="text-xs text-red-500">{task.error_message}</p>
+            </div>
+          )}
+
+          {/* Retry button for failed/cancelled tasks */}
+          {(task.status === "failed" || task.status === "cancelled") && (
+            <div className="mt-4">
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="flex items-center gap-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
+              >
+                {retrying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+                {retrying ? "重新提交中..." : "重新解析"}
+              </button>
             </div>
           )}
         </div>
