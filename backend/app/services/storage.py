@@ -54,11 +54,14 @@ class StorageService:
             logger.error("Failed to generate upload presigned URL", key=key, error=str(e))
             raise
 
-    def generate_download_presigned_url(self, key: str, expires: int = None, filename: str = None) -> str:
+    def generate_download_presigned_url(self, key: str, expires: int = None, filename: str = None, inline_disposition: bool = False) -> str:
         """Generate a presigned URL for file download."""
         params = {"Bucket": self.bucket, "Key": key}
         if filename:
-            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+            disposition = "inline" if inline_disposition else "attachment"
+            params["ResponseContentDisposition"] = f'{disposition}; filename="{filename}"'
+        elif inline_disposition:
+            params["ResponseContentDisposition"] = "inline"
         try:
             return self.external_client.generate_presigned_url(
                 "get_object",

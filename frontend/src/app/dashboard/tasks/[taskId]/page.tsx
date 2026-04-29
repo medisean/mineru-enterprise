@@ -13,6 +13,7 @@ import { apiClient, tasksApi } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
   AlertCircle, RotateCcw, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
+  FileSpreadsheet, FileImage,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -47,6 +48,8 @@ interface ResultFile {
 interface PreviewData {
   format: string;
   content: string;
+  markdown_content: string | null;
+  json_content: string | null;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -59,6 +62,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 
 const PDF_EXTENSIONS = ["pdf"];
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "bmp", "webp", "gif"];
+const OFFICE_EXTENSIONS = ["pptx", "ppt", "docx", "doc", "xlsx", "xls"];
 
 function isPdfFile(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -68,6 +72,19 @@ function isPdfFile(filename: string) {
 function isImageFile(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
   return IMAGE_EXTENSIONS.includes(ext);
+}
+
+function isOfficeFile(filename: string) {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  return OFFICE_EXTENSIONS.includes(ext);
+}
+
+function getOfficeFileType(filename: string) {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  if (["pptx", "ppt"].includes(ext)) return "PowerPoint";
+  if (["docx", "doc"].includes(ext)) return "Word";
+  if (["xlsx", "xls"].includes(ext)) return "Excel";
+  return "Office";
 }
 
 export default function TaskDetailPage() {
@@ -109,8 +126,8 @@ export default function TaskDetailPage() {
 
   const copyContent = async () => {
     const text = resultTab === "markdown"
-      ? preview?.content
-      : preview?.format === "json" ? preview?.content : null;
+      ? preview?.markdown_content || preview?.content
+      : preview?.json_content || null;
     if (text) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -220,12 +237,11 @@ export default function TaskDetailPage() {
   // ── Success: left-right split layout ──────────────────────────────────────
   const sourceIsPdf = isPdfFile(task.original_filename);
   const sourceIsImage = isImageFile(task.original_filename);
+  const sourceIsOffice = isOfficeFile(task.original_filename);
+  const officeType = getOfficeFileType(task.original_filename);
 
   // Find origin file download URL for embedding
   const originFileUrl = sourceFileUrl;
-
-  // Find the JSON content_list file for JSON tab
-  const jsonContent = preview?.format === "json" ? preview.content : null;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -299,6 +315,28 @@ export default function TaskDetailPage() {
                 className="bg-white shadow-lg rounded max-w-none"
                 style={{ width: `${zoom}%` }}
               />
+            ) : sourceIsOffice && originFileUrl ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-20 w-full">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-sm w-full">
+                  <div className="w-16 h-16 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <FileSpreadsheet className="h-8 w-8 text-blue-500" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700 mb-1">{task.original_filename}</p>
+                  <p className="text-xs text-gray-400 mb-4">
+                    {officeType} 文件 · {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB
+                  </p>
+                  <p className="text-xs text-gray-400 mb-4">该文件类型暂不支持在线预览，请下载后查看</p>
+                  <a
+                    href={originFileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    下载原文件
+                  </a>
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center py-20">
                 <FileText className="h-16 w-16 text-gray-200 mb-4" />
@@ -355,12 +393,14 @@ export default function TaskDetailPage() {
               </div>
             ) : resultTab === "markdown" ? (
               <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-table:text-sm prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded">
-                {preview?.format === "markdown" ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {preview.content}
-                  </ReactMarkdown>
-                ) : preview?.format === "html" ? (
-                  <div dangerouslySetInnerHTML={{ __html: preview.content }} />
+                {preview?.markdown_content ? (
+                  preview.format === "html" && !preview.markdown_content.includes("#") ? (
+                    <div dangerouslySetInnerHTML={{ __html: preview.markdown_content }} />
+                  ) : (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {preview.markdown_content}
+                    </ReactMarkdown>
+                  )
                 ) : (
                   <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap">
                     {preview?.content || "暂无预览内容"}
@@ -370,11 +410,15 @@ export default function TaskDetailPage() {
             ) : (
               // JSON tab
               <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 overflow-auto whitespace-pre-wrap">
-                {jsonContent
-                  ? JSON.stringify(JSON.parse(jsonContent), null, 2)
-                  : preview?.content
-                    ? JSON.stringify(JSON.parse(preview.content), null, 2)
-                    : "暂无 JSON 数据"}
+                {preview?.json_content
+                  ? (() => {
+                      try {
+                        return JSON.stringify(JSON.parse(preview.json_content), null, 2);
+                      } catch {
+                        return preview.json_content;
+                      }
+                    })()
+                  : "暂无 JSON 数据"}
               </pre>
             )}
           </div>

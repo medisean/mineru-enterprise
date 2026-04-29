@@ -133,7 +133,8 @@ async def get_source_url(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a presigned download URL for the original uploaded file."""
+    """Return a presigned download URL for the original uploaded file.
+    Uses inline Content-Disposition so browsers can attempt to preview."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -141,6 +142,7 @@ async def get_source_url(
     url = storage_service.generate_download_presigned_url(
         task.input_s3_key,
         filename=task.original_filename,
+        inline_disposition=True,
     )
     return {"download_url": url}
 
@@ -359,14 +361,14 @@ async def batch_create_tasks(
     return {"items": [TaskOut.model_validate(t) for t in all_tasks], "total": len(all_tasks)}
 
 
-# ── Get task result preview (Markdown content) ───────────────────────────
+# ── Get task result preview (Markdown + JSON content) ───────────────────
 @router.get("/{task_id}/preview")
 async def get_task_preview(
     task_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return raw Markdown/JSON content for inline preview (no download)."""
+    """Return Markdown and JSON content for inline preview."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -374,21 +376,49 @@ async def get_task_preview(
         raise HTTPException(status_code=400, detail=f"Task not completed (status: {task.status})")
 
     objects = storage_service.list_objects(task.output_s3_prefix)
+
+    markdown_content = None
+    json_content = None
+    html_content = None
+
     for obj in objects:
         key = obj["key"]
-        if key.endswith(".md"):
+        if key.endswith(".md") and markdown_content is None:
             content = storage_service.download_bytes(key)
-            return {"format": "markdown", "content": content.decode("utf-8", errors="replace")}
-        elif key.endswith(".json") and "content_list" in key:
+            markdown_content = content.decode("utf-8", errors="replace")
+        elif key.endswith(".json") and "content_list" in key and json_content is None:
             content = storage_service.download_bytes(key)
-            return {"format": "json", "content": content.decode("utf-8", errors="replace")}
-        elif key.endswith(".html"):
+            json_content = content.decode("utf-8", errors="replace")
+        elif key.endswith(".html") and html_content is None:
             content = storage_service.download_bytes(key)
-            return {"format": "html", "content": content.decode("utf-8", errors="replace")}
+            html_content = content.decode("utf-8", errors="replace")
 
-    # Fallback: return first file
-    if objects:
+    # If no markdown but html exists, use html as markdown_content
+    if not markdown_content and html_content:
+        markdown_content = html_content
+
+    # Determine primary format for backwards compat
+    if markdown_content:
+        primary_format = "html" if html_content and not any(k.endswith(".md") for k in [o["key"] for o in objects]) else "markdown"
+    elif json_content:
+        primary_format = "json"
+    else:
+        primary_format = "raw"
+
+    # Fallback: return first file as raw
+    if not markdown_content and not json_content and objects:
         content = storage_service.download_bytes(objects[0]["key"])
-        return {"format": "raw", "filename": objects[0]["key"].split("/")[-1], "content": content.decode("utf-8", errors="replace")}
+        return {
+            "format": "raw",
+            "filename": objects[0]["key"].split("/")[-1],
+            "content": content.decode("utf-8", errors="replace"),
+            "markdown_content": None,
+            "json_content": None,
+        }
 
-    raise HTTPException(status_code=404, detail="No previewable content found")
+    return {
+        "format": primary_format,
+        "content": markdown_content or json_content,
+        "markdown_content": markdown_content,
+        "json_content": json_content,
+    }
