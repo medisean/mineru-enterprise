@@ -1,22 +1,34 @@
 "use client";
 /**
- * Task detail page — left-right split layout.
- * Left: source file preview (PDF embed or file info).
- * Right: parse result (Markdown/JSON toggle + copy).
+ * Task detail page — left-right split layout with scroll sync.
+ * Left: source file preview (PDF pages via react-pdf, or image embed).
+ * Right: parse result (Markdown + copy).
+ * Scrolling one panel proportionally scrolls the other.
  */
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { apiClient, tasksApi } from "@/lib/api";
+import { apiClient } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
-  AlertCircle, RotateCcw, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
-  FileSpreadsheet, FileImage,
+  AlertCircle, RotateCcw, ZoomIn, ZoomOut,
+  FileSpreadsheet,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
+
+// Dynamic import PDF viewer to avoid SSR issues (pdfjs-dist uses browser APIs)
+const PdfViewer = dynamic(() => import("@/components/pdf-viewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+    </div>
+  ),
+});
 
 interface TaskDetail {
   id: string;
@@ -36,13 +48,6 @@ interface TaskDetail {
   started_at?: string;
   completed_at?: string;
   input_s3_key?: string;
-}
-
-interface ResultFile {
-  filename: string;
-  s3_key: string;
-  download_url: string;
-  size: number;
 }
 
 interface PreviewData {
@@ -92,8 +97,12 @@ export default function TaskDetailPage() {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [resultTab, setResultTab] = useState<"markdown" | "json">("markdown");
   const [zoom, setZoom] = useState(100);
+
+  // Scroll sync refs
+  const leftScrollRef = useRef<HTMLDivElement>(null);
+  const rightScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
 
   const { data: task, isLoading, isError, refetch } = useQuery({
     queryKey: ["task", taskId],
@@ -123,12 +132,10 @@ export default function TaskDetailPage() {
     enabled: task?.status === "success",
   });
   const sourceFileUrl = sourceUrlData?.download_url;
-  const previewType = sourceUrlData?.preview_type; // "pdf" | "original"
+  const previewType = sourceUrlData?.preview_type;
 
   const copyContent = async () => {
-    const text = resultTab === "markdown"
-      ? preview?.markdown_content || preview?.content
-      : preview?.json_content || null;
+    const text = preview?.markdown_content || preview?.content;
     if (text) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -148,6 +155,33 @@ export default function TaskDetailPage() {
       setRetrying(false);
     }
   };
+
+  // ── Scroll sync ──────────────────────────────────────────────────────
+  const handleScroll = useCallback((source: "left" | "right") => {
+    if (isSyncingScroll.current) return;
+    isSyncingScroll.current = true;
+
+    const srcEl = source === "left" ? leftScrollRef.current : rightScrollRef.current;
+    const dstEl = source === "left" ? rightScrollRef.current : leftScrollRef.current;
+    if (!srcEl || !dstEl) {
+      isSyncingScroll.current = false;
+      return;
+    }
+
+    const srcMax = srcEl.scrollHeight - srcEl.clientHeight;
+    if (srcMax <= 0) {
+      isSyncingScroll.current = false;
+      return;
+    }
+    const ratio = srcEl.scrollTop / srcMax;
+    const dstMax = dstEl.scrollHeight - dstEl.clientHeight;
+    dstEl.scrollTop = ratio * dstMax;
+
+    // Use requestAnimationFrame to avoid jank
+    requestAnimationFrame(() => {
+      isSyncingScroll.current = false;
+    });
+  }, []);
 
   if (isLoading) {
     return (
@@ -241,7 +275,9 @@ export default function TaskDetailPage() {
   const sourceIsOffice = isOfficeFile(task.original_filename);
   const officeType = getOfficeFileType(task.original_filename);
 
-  // Find origin file download URL for embedding
+  // Determine if we should use react-pdf (for actual PDFs and Office files with PDF preview)
+  const usePdfRenderer = (sourceIsPdf || (sourceIsOffice && previewType === "pdf")) && sourceFileUrl;
+
   const originFileUrl = sourceFileUrl;
 
   return (
@@ -262,7 +298,6 @@ export default function TaskDetailPage() {
           <span className={`text-xs px-2 py-0.5 rounded-full ${statusCfg.color}`}>{statusCfg.label}</span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Download files dropdown */}
           {results?.files?.length > 0 && (
             <a
               href={results.files[0].download_url}
@@ -301,30 +336,23 @@ export default function TaskDetailPage() {
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto flex items-start justify-center p-4">
-            {sourceIsPdf && originFileUrl ? (
-              <iframe
-                src={originFileUrl}
-                className="bg-white shadow-lg rounded"
-                style={{ width: `${zoom}%`, height: "100%", minHeight: 600, border: "none" }}
-                title="PDF 预览"
-              />
+          <div
+            ref={leftScrollRef}
+            onScroll={() => handleScroll("left")}
+            className="flex-1 overflow-auto p-4"
+          >
+            {usePdfRenderer ? (
+              <PdfViewer url={originFileUrl} zoom={zoom} />
             ) : sourceIsImage && originFileUrl ? (
-              <img
-                src={originFileUrl}
-                alt="源文件预览"
-                className="bg-white shadow-lg rounded max-w-none"
-                style={{ width: `${zoom}%` }}
-              />
-            ) : sourceIsOffice && originFileUrl ? (
-              previewType === "pdf" ? (
-                <iframe
+              <div className="flex justify-center">
+                <img
                   src={originFileUrl}
-                  className="bg-white shadow-lg rounded"
-                  style={{ width: `${zoom}%`, height: "100%", minHeight: 600, border: "none" }}
-                  title={`${officeType} PDF 预览`}
+                  alt="源文件预览"
+                  className="bg-white shadow-lg rounded max-w-none"
+                  style={{ width: `${zoom}%` }}
                 />
-              ) : (
+              </div>
+            ) : sourceIsOffice && originFileUrl && previewType !== "pdf" ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-20 w-full">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-sm w-full">
                   <div className="w-16 h-16 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -346,7 +374,6 @@ export default function TaskDetailPage() {
                   </a>
                 </div>
               </div>
-              )
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center py-20">
                 <FileText className="h-16 w-16 text-gray-200 mb-4" />
@@ -360,32 +387,13 @@ export default function TaskDetailPage() {
           </div>
         </div>
 
-        {/* Right panel: Parse result */}
+        {/* Right panel: Markdown result */}
         <div className="w-1/2 flex flex-col bg-white">
-          {/* Tab bar */}
+          {/* Header bar */}
           <div className="flex items-center justify-between px-4 border-b border-gray-100 flex-shrink-0">
-            <div className="flex">
-              <button
-                onClick={() => setResultTab("markdown")}
-                className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  resultTab === "markdown"
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                Markdown
-              </button>
-              <button
-                onClick={() => setResultTab("json")}
-                className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-                  resultTab === "json"
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                JSON
-              </button>
-            </div>
+            <span className="px-4 py-2.5 text-xs font-medium border-b-2 border-blue-500 text-blue-600">
+              Markdown
+            </span>
             <button
               onClick={copyContent}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded transition-colors"
@@ -395,13 +403,17 @@ export default function TaskDetailPage() {
             </button>
           </div>
 
-          {/* Result content */}
-          <div className="flex-1 overflow-auto p-6">
+          {/* Markdown content */}
+          <div
+            ref={rightScrollRef}
+            onScroll={() => handleScroll("right")}
+            className="flex-1 overflow-auto p-6"
+          >
             {previewLoading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
               </div>
-            ) : resultTab === "markdown" ? (
+            ) : (
               <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-table:text-sm prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded">
                 {preview?.markdown_content ? (
                   preview.format === "html" && !preview.markdown_content.includes("#") ? (
@@ -417,19 +429,6 @@ export default function TaskDetailPage() {
                   </pre>
                 )}
               </div>
-            ) : (
-              // JSON tab
-              <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 overflow-auto whitespace-pre-wrap">
-                {preview?.json_content
-                  ? (() => {
-                      try {
-                        return JSON.stringify(JSON.parse(preview.json_content), null, 2);
-                      } catch {
-                        return preview.json_content;
-                      }
-                    })()
-                  : "暂无 JSON 数据"}
-              </pre>
             )}
           </div>
         </div>
