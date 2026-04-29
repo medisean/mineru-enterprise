@@ -11,7 +11,7 @@ import { TaskList } from "@/components/tasks/task-list";
 import { useAuthStore } from "@/lib/auth-store";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  LogOut, FileText, Home, Settings, BarChart3, Users, Loader2,
+  LogOut, FileText, Plus, Loader2,
 } from "lucide-react";
 
 type Tab = "upload" | "tasks";
@@ -70,37 +70,16 @@ function DashboardContent() {
 
         <nav className="flex-1 p-3 space-y-1">
           <NavItem
-            icon={<Home className="h-4 w-4" />}
-            label="上传解析"
+            icon={<Plus className="h-4 w-4" />}
+            label="新解析"
             active={tab === "upload"}
             onClick={() => setTab("upload")}
           />
           <NavItem
             icon={<FileText className="h-4 w-4" />}
-            label="解析任务"
+            label="任务管理"
             active={tab === "tasks"}
             onClick={() => setTab("tasks")}
-          />
-          <NavItem
-            icon={<BarChart3 className="h-4 w-4" />}
-            label="统计概览"
-            active={false}
-            onClick={() => {}}
-            badge="即将推出"
-          />
-          <NavItem
-            icon={<Users className="h-4 w-4" />}
-            label="团队管理"
-            active={false}
-            onClick={() => {}}
-            badge="即将推出"
-          />
-          <NavItem
-            icon={<Settings className="h-4 w-4" />}
-            label="系统设置"
-            active={false}
-            onClick={() => {}}
-            badge="即将推出"
           />
         </nav>
 
