@@ -39,8 +39,15 @@ export default function LoginPage() {
     try {
       await login(username, password);
       router.push("/dashboard");
-    } catch {
-      setError("用户名或密码错误");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      if (detail) {
+        setError(detail);
+      } else if (err?.response?.status === 0 || !err?.response) {
+        setError("网络连接失败，请检查后端服务是否启动");
+      } else {
+        setError("登录失败，请稍后重试");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -60,8 +67,15 @@ export default function LoginPage() {
       // Auto-login after registration
       await login(regUsername, regPassword);
       router.push("/dashboard");
-    } catch {
-      setError("注册失败，用户名或邮箱可能已存在");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      if (detail) {
+        setError(detail);
+      } else if (err?.response?.status === 0 || !err?.response) {
+        setError("网络连接失败，请检查后端服务是否启动");
+      } else {
+        setError("注册失败，请稍后重试");
+      }
     } finally {
       setIsLoading(false);
     }
