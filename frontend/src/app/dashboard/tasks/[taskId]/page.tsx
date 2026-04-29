@@ -63,7 +63,7 @@ export default function TaskDetailPage() {
 
   const { data: task, isLoading, isError, refetch } = useQuery({
     queryKey: ["task", taskId],
-    queryFn: () => apiClient.get(`/api/v1/tasks/${taskId}`).then((r) => r.data),
+    queryFn: () => apiClient.get(`/tasks/${taskId}`).then((r) => r.data),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === "pending" || status === "processing" ? 3000 : false;
@@ -72,13 +72,13 @@ export default function TaskDetailPage() {
 
   const { data: preview, isLoading: previewLoading } = useQuery({
     queryKey: ["task-preview", taskId],
-    queryFn: () => apiClient.get(`/api/v1/tasks/${taskId}/preview`).then((r) => r.data as PreviewData),
+    queryFn: () => apiClient.get(`/tasks/${taskId}/preview`).then((r) => r.data as PreviewData),
     enabled: task?.status === "success",
   });
 
   const { data: results } = useQuery({
     queryKey: ["task-results", taskId],
-    queryFn: () => apiClient.get(`/api/v1/tasks/${taskId}/results`).then((r) => r.data),
+    queryFn: () => apiClient.get(`/tasks/${taskId}/results`).then((r) => r.data),
     enabled: task?.status === "success",
   });
 
@@ -94,7 +94,7 @@ export default function TaskDetailPage() {
     if (retrying) return;
     setRetrying(true);
     try {
-      await apiClient.post(`/api/v1/tasks/${taskId}/retry`);
+      await apiClient.post(`/tasks/${taskId}/retry`);
       refetch();
     } catch (err: any) {
       alert(err?.response?.data?.detail || "重试失败，请稍后再试");

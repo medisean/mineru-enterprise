@@ -106,7 +106,7 @@ function TaskRow({ task }: { task: Task }) {
     if (retrying) return;
     setRetrying(true);
     try {
-      await apiClient.post(`/api/v1/tasks/${task.id}/retry`);
+      await apiClient.post(`/tasks/${task.id}/retry`);
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
     } catch {
       // silently fail — user can go to detail page for more info
