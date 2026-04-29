@@ -201,6 +201,7 @@ export function TaskList() {
   });
 
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
+  const isEmpty = !data?.items?.length;
 
   if (isLoading && !data) {
     return (
@@ -216,18 +217,9 @@ export function TaskList() {
     );
   }
 
-  if (!data?.items?.length) {
-    return (
-      <div className="text-center py-12">
-        <FileText className="mx-auto h-10 w-10 text-gray-200 mb-3" />
-        <p className="text-sm text-gray-400">暂无解析任务，上传文件开始解析</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      {/* Filter bar */}
+      {/* Filter bar — always visible */}
       <div className="flex items-center gap-2">
         <Filter className="h-4 w-4 text-gray-400" />
         <div className="flex gap-1">
@@ -246,16 +238,25 @@ export function TaskList() {
           ))}
         </div>
         <span className="text-xs text-gray-400 ml-auto">
-          共 {data.total} 条
+          共 {data?.total ?? 0} 条
         </span>
       </div>
 
-      {/* Task list */}
-      <div className="space-y-2">
-        {data.items.map((task: Task) => (
-          <TaskRow key={task.id} task={task} />
-        ))}
-      </div>
+      {/* Task list or empty state */}
+      {isEmpty ? (
+        <div className="text-center py-12">
+          <FileText className="mx-auto h-10 w-10 text-gray-200 mb-3" />
+          <p className="text-sm text-gray-400">
+            {statusFilter ? `没有"${STATUS_FILTERS.find(f => f.value === statusFilter)?.label}"状态的任务` : "暂无解析任务，上传文件开始解析"}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {data.items.map((task: Task) => (
+            <TaskRow key={task.id} task={task} />
+          ))}
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
