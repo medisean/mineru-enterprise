@@ -96,5 +96,6 @@ export const tasksApi: Record<string, Function> = {
   getResults: (id: string) => apiClient.get(`/tasks/${id}/results`),
   getPreview: (id: string) => apiClient.get(`/tasks/${id}/preview`),
   cancel: (id: string) => apiClient.delete(`/tasks/${id}`),
+  delete: (id: string) => apiClient.delete(`/tasks/${id}`),
   retry: (id: string) => apiClient.post(`/tasks/${id}/retry`),
 };

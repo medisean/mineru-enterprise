@@ -10,7 +10,7 @@ import { tasksApi } from "@/lib/api";
 import { apiClient } from "@/lib/api";
 import {
   CheckCircle2, XCircle, Clock, Loader2, Download, FileText,
-  ChevronLeft, ChevronRight, Filter, RotateCcw,
+  ChevronLeft, ChevronRight, Filter, RotateCcw, Trash2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -70,6 +70,7 @@ function TaskRow({ task }: { task: Task }) {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (task.status !== "pending" && task.status !== "processing") return;
@@ -115,6 +116,22 @@ function TaskRow({ task }: { task: Task }) {
     }
   };
 
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (deleting) return;
+    if (!confirm(`确定删除任务「${task.original_filename}」？此操作不可恢复。`)) return;
+    setDeleting(true);
+    try {
+      await apiClient.delete(`/tasks/${task.id}`);
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    } catch {
+      alert("删除失败，请稍后重试");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const statusCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
   const fileSizeMB = (task.file_size_bytes / 1024 / 1024).toFixed(1);
   const iconColor = getFileIconColor(task.original_filename);
@@ -150,16 +167,17 @@ function TaskRow({ task }: { task: Task }) {
           <p className="text-xs text-red-500 mt-0.5 truncate">{task.error_message}</p>
         )}
       </div>
-      {task.status === "success" ? (
-        <Link
-          href={`/dashboard/tasks/${task.id}`}
-          className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-        >
-          <Download className="h-3.5 w-3.5" />
-          查看结果
-        </Link>
-      ) : task.status === "failed" ? (
-        <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {task.status === "success" && (
+          <Link
+            href={`/dashboard/tasks/${task.id}`}
+            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            查看结果
+          </Link>
+        )}
+        {task.status === "failed" && (
           <button
             onClick={handleRetry}
             disabled={retrying}
@@ -168,14 +186,24 @@ function TaskRow({ task }: { task: Task }) {
             {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
             {retrying ? "重试中" : "重试"}
           </button>
+        )}
+        {(task.status === "failed" || task.status === "cancelled") && (
           <Link
             href={`/dashboard/tasks/${task.id}`}
-            className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
           >
             详情
           </Link>
-        </div>
-      ) : null}
+        )}
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 hover:bg-red-50 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          title="删除"
+        >
+          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        </button>
+      </div>
     </div>
   );
 }

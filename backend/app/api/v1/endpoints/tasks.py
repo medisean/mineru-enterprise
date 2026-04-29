@@ -202,24 +202,44 @@ async def retry_task(
 
 # ── Cancel task ───────────────────────────────────────────────────────────────
 @router.delete("/{task_id}")
-async def cancel_task(
+async def delete_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Delete a task. Cancels if running, then removes from DB and S3."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in (TaskStatus.PENDING, TaskStatus.PROCESSING):
-        raise HTTPException(status_code=400, detail="Task cannot be cancelled")
 
-    if task.celery_task_id:
-        from app.workers.parse_worker import celery_app
-        celery_app.control.revoke(task.celery_task_id, terminate=True)
+    # If still running, revoke the Celery task first
+    if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING) and task.celery_task_id:
+        try:
+            from app.workers.parse_worker import celery_app
+            celery_app.control.revoke(task.celery_task_id, terminate=True)
+        except Exception:
+            pass
 
-    task.status = TaskStatus.CANCELLED
+    # Clean up S3 objects
+    if task.output_s3_prefix:
+        try:
+            objects = storage_service.list_objects(task.output_s3_prefix)
+            for obj in objects:
+                storage_service.delete_object(obj["key"])
+        except Exception:
+            pass
+
+    # Delete uploaded source file
+    if task.input_s3_key:
+        try:
+            storage_service.delete_object(task.input_s3_key)
+        except Exception:
+            pass
+
+    # Remove from DB
+    await db.delete(task)
     await db.commit()
-    return {"message": "Task cancelled"}
+    return {"message": "Task deleted"}
 
 
 # ── Batch presigned upload URLs ───────────────────────────────────────────
