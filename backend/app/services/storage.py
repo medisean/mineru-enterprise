@@ -14,22 +14,34 @@ logger = structlog.get_logger(__name__)
 
 class StorageService:
     def __init__(self):
-        kwargs = {
+        common_kwargs = {
             "aws_access_key_id": settings.S3_ACCESS_KEY_ID,
             "aws_secret_access_key": settings.S3_SECRET_ACCESS_KEY,
             "region_name": settings.S3_REGION_NAME,
             "config": Config(signature_version="s3v4"),
         }
-        if settings.S3_ENDPOINT_URL:
-            kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
 
-        self.client = boto3.client("s3", **kwargs)
+        # Internal client: used for server-side operations (upload results, download, list)
+        internal_kwargs = {**common_kwargs}
+        if settings.S3_ENDPOINT_URL:
+            internal_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
+        self.client = boto3.client("s3", **internal_kwargs)
+
+        # External client: used for generating presigned URLs accessible from the browser.
+        # Must use the external URL so the signature is computed with the correct host header.
+        external_kwargs = {**common_kwargs}
+        if settings.S3_EXTERNAL_URL:
+            external_kwargs["endpoint_url"] = settings.S3_EXTERNAL_URL
+        elif settings.S3_ENDPOINT_URL:
+            external_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
+        self.external_client = boto3.client("s3", **external_kwargs)
+
         self.bucket = settings.S3_BUCKET_NAME
 
     def generate_upload_presigned_url(self, key: str, content_type: str, expires: int = None) -> str:
         """Generate a presigned URL for direct browser upload."""
         try:
-            url = self.client.generate_presigned_url(
+            return self.external_client.generate_presigned_url(
                 "put_object",
                 Params={
                     "Bucket": self.bucket,
@@ -38,7 +50,6 @@ class StorageService:
                 },
                 ExpiresIn=expires or settings.S3_PRESIGN_EXPIRE_SECONDS,
             )
-            return self._rewrite_external_url(url)
         except ClientError as e:
             logger.error("Failed to generate upload presigned URL", key=key, error=str(e))
             raise
@@ -49,21 +60,14 @@ class StorageService:
         if filename:
             params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
         try:
-            url = self.client.generate_presigned_url(
+            return self.external_client.generate_presigned_url(
                 "get_object",
                 Params=params,
                 ExpiresIn=expires or settings.S3_PRESIGN_EXPIRE_SECONDS,
             )
-            return self._rewrite_external_url(url)
         except ClientError as e:
             logger.error("Failed to generate download presigned URL", key=key, error=str(e))
             raise
-
-    def _rewrite_external_url(self, url: str) -> str:
-        """Replace internal S3 endpoint with external URL for browser access."""
-        if settings.S3_EXTERNAL_URL and settings.S3_ENDPOINT_URL:
-            return url.replace(settings.S3_ENDPOINT_URL, settings.S3_EXTERNAL_URL, 1)
-        return url
 
     def upload_bytes(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
         """Upload bytes directly (used by worker to save results)."""
