@@ -31,7 +31,7 @@ from app.schemas.schemas import (
     BatchExtractResultData, BatchExtractResultItem,
 )
 from app.services.storage import storage_service
-from app.workers.parse_worker import parse_document
+from app.workers.parse_worker import dispatch_parse_task
 
 logger = structlog.get_logger(__name__)
 
@@ -94,12 +94,8 @@ def _trace_id() -> str:
 
 
 def _dispatch_celery_task(task: ParseTask, config: dict):
-    """Dispatch a Celery parse task."""
-    celery_task = parse_document.apply_async(
-        args=[task.id, task.input_s3_key, task.output_s3_prefix, config],
-        queue="parse",
-    )
-    return celery_task.id
+    """Dispatch a Celery parse task to the appropriate queue."""
+    return dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, config)
 
 
 async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:

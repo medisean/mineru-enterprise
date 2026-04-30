@@ -1,0 +1,27 @@
+# docker-compose.prod.yml — Production override
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What this does:
+#   1. Forces ALL parse tasks to the GPU queue (FORCE_GPU_QUEUE=true)
+#   2. Disables the CPU worker (scale to 0)
+#   3. Enables the GPU worker (removes profile restriction)
+#   4. Starts Nginx reverse proxy
+
+services:
+  api:
+    environment:
+      FORCE_GPU_QUEUE: "true"
+
+  worker:
+    # Disable CPU worker in production — scale to 0
+    deploy:
+      replicas: 0
+
+  worker-gpu:
+    # Make GPU worker start without needing --profile gpu
+    profiles: []
+
+  nginx:
+    profiles: []

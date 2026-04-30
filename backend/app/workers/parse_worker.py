@@ -26,25 +26,15 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_routes={
-        "app.workers.parse_worker.parse_document": {"queue": "parse"},
+        "app.workers.parse_worker.parse_document_cpu": {"queue": "parse_cpu"},
+        "app.workers.parse_worker.parse_document_gpu": {"queue": "parse_gpu"},
     },
 )
 
 
-@celery_app.task(
-    bind=True,
-    name="app.workers.parse_worker.parse_document",
-    max_retries=2,
-    soft_time_limit=3600,
-)
-def parse_document(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
-    """
-    Main parsing task:
-    1. Download file from S3
-    2. Run MinerU parsing with full parameter set
-    3. Upload results back to S3
-    4. Update task status in DB
-    """
+
+def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
+    """Shared parsing logic used by both CPU and GPU task variants."""
     import subprocess, json, glob
 
     # Sync DB connection for Celery worker
@@ -276,3 +266,55 @@ def _convert_office_to_pdf(input_path: str) -> str | None:
     except Exception as e:
         logger.warning("LibreOffice conversion exception", error=str(e))
         return None
+
+
+# ── CPU task entry point ───────────────────────────────────────────────────
+@celery_app.task(
+    bind=True,
+    name="app.workers.parse_worker.parse_document_cpu",
+    max_retries=2,
+    soft_time_limit=3600,
+)
+def parse_document_cpu(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
+    """Parse task dispatched to CPU worker queue."""
+    config["device"] = "cpu"
+    return _run_parse(self, task_id, input_s3_key, output_s3_prefix, config)
+
+
+# ── GPU task entry point ───────────────────────────────────────────────────
+@celery_app.task(
+    bind=True,
+    name="app.workers.parse_worker.parse_document_gpu",
+    max_retries=2,
+    soft_time_limit=3600,
+)
+def parse_document_gpu(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
+    """Parse task dispatched to GPU worker queue."""
+    config["device"] = config.get("device", "cuda")
+    return _run_parse(self, task_id, input_s3_key, output_s3_prefix, config)
+
+
+def dispatch_parse_task(task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict) -> str:
+    """Dispatch a parse task to the appropriate queue based on device / environment.
+
+    Routing logic:
+      - If config specifies device=cuda/mps → parse_gpu queue
+      - If config specifies device=cpu       → parse_cpu queue
+      - If FORCE_GPU_QUEUE=true (env var)     → parse_gpu queue (production mode)
+      - Otherwise                            → parse_cpu queue (default / dev)
+    """
+    force_gpu = os.environ.get("FORCE_GPU_QUEUE", "").lower() in ("1", "true", "yes")
+    device = config.get("device", settings.MINERU_DEVICE)
+
+    if force_gpu or device in ("cuda", "mps"):
+        result = parse_document_gpu.apply_async(
+            args=[task_id, input_s3_key, output_s3_prefix, config],
+            queue="parse_gpu",
+        )
+    else:
+        result = parse_document_cpu.apply_async(
+            args=[task_id, input_s3_key, output_s3_prefix, config],
+            queue="parse_cpu",
+        )
+
+    return result.id

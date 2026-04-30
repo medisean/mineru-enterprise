@@ -17,7 +17,7 @@ from app.schemas.schemas import (
     TaskResultResponse, TaskResultFile,
 )
 from app.services.storage import storage_service
-from app.workers.parse_worker import parse_document
+from app.workers.parse_worker import dispatch_parse_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -72,20 +72,17 @@ async def create_task(
     await db.refresh(task)
 
     # Dispatch to Celery
-    celery_task = parse_document.apply_async(
-        args=[task.id, task.input_s3_key, task.output_s3_prefix, {
-            "backend": payload.backend,
-            "output_format": payload.output_format,
-            "language": payload.language or "ch",
-            "is_ocr": payload.is_ocr,
-            "enable_formula": payload.enable_formula,
-            "enable_table": payload.enable_table,
-            "page_ranges": payload.page_ranges,
-            "parse_options": payload.parse_options,
-        }],
-        queue="parse",
-    )
-    task.celery_task_id = celery_task.id
+    celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
+        "backend": payload.backend,
+        "output_format": payload.output_format,
+        "language": payload.language or "ch",
+        "is_ocr": payload.is_ocr,
+        "enable_formula": payload.enable_formula,
+        "enable_table": payload.enable_table,
+        "page_ranges": payload.page_ranges,
+        "parse_options": payload.parse_options,
+    })
+    task.celery_task_id = celery_task_id
     await db.commit()
 
     return task
@@ -225,20 +222,17 @@ async def retry_task(
     await db.refresh(task)
 
     # Re-dispatch to Celery
-    celery_task = parse_document.apply_async(
-        args=[task.id, task.input_s3_key, task.output_s3_prefix, {
-            "backend": task.backend,
-            "output_format": task.output_format,
-            "language": task.language,
-            "is_ocr": task.is_ocr,
-            "enable_formula": task.enable_formula,
-            "enable_table": task.enable_table,
-            "page_ranges": task.page_ranges,
-            "parse_options": None,
-        }],
-        queue="parse",
-    )
-    task.celery_task_id = celery_task.id
+    celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
+        "backend": task.backend,
+        "output_format": task.output_format,
+        "language": task.language,
+        "is_ocr": task.is_ocr,
+        "enable_formula": task.enable_formula,
+        "enable_table": task.enable_table,
+        "page_ranges": task.page_ranges,
+        "parse_options": None,
+    })
+    task.celery_task_id = celery_task_id
     await db.commit()
     await db.refresh(task)
 
@@ -365,20 +359,17 @@ async def batch_create_tasks(
         result = await db.execute(q)
         task = result.scalar_one_or_none()
         if task:
-            celery_task = parse_document.apply_async(
-                args=[task.id, task.input_s3_key, task.output_s3_prefix, {
-                    "backend": payload.backend,
-                    "output_format": payload.output_format,
-                    "language": payload.language or "ch",
-                    "is_ocr": payload.is_ocr,
-                    "enable_formula": payload.enable_formula,
-                    "enable_table": payload.enable_table,
-                    "page_ranges": payload.page_ranges,
-                    "parse_options": payload.parse_options,
-                }],
-                queue="parse",
-            )
-            task.celery_task_id = celery_task.id
+            celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
+                "backend": payload.backend,
+                "output_format": payload.output_format,
+                "language": payload.language or "ch",
+                "is_ocr": payload.is_ocr,
+                "enable_formula": payload.enable_formula,
+                "enable_table": payload.enable_table,
+                "page_ranges": payload.page_ranges,
+                "parse_options": payload.parse_options,
+            })
+            task.celery_task_id = celery_task_id
             all_tasks.append(task)
 
     await db.commit()

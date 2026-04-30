@@ -27,8 +27,12 @@ case $MODE in
     echo "  MinIO:     http://localhost:9001"
     ;;
   prod)
-    echo "启动生产模式（含 Nginx）..."
-    docker compose --profile production up -d
+    echo "启动生产模式（GPU only + Nginx）..."
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    echo -e "${GREEN}✅ 服务已启动（生产模式 — GPU only）${NC}"
+    echo "  Nginx:     http://localhost:80"
+    echo "  API:       http://localhost:8000/api/docs"
+    echo "  GPU Worker: 已启用（CPU Worker 已禁用）"
     ;;
   gpu)
     echo "启动 GPU 模式（需要 nvidia-container-toolkit）..."
@@ -45,7 +49,7 @@ case $MODE in
     echo "  Flower:    http://localhost:5555"
     ;;
   down)
-    docker compose --profile minio --profile monitoring --profile production --profile gpu down
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile minio --profile monitoring --profile production --profile gpu down
     ;;
   *)
     echo "用法: ./scripts/start.sh [dev|prod|gpu|monitor|down]"

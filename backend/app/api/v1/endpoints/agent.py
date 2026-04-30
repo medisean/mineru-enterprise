@@ -27,7 +27,7 @@ from app.schemas.schemas import (
     AgentParseResultData,
 )
 from app.services.storage import storage_service
-from app.workers.parse_worker import parse_document
+from app.workers.parse_worker import dispatch_parse_task
 
 logger = structlog.get_logger(__name__)
 
@@ -166,11 +166,8 @@ async def agent_parse_url(
         "enable_table": payload.enable_table,
         "page_ranges": payload.page_range,
     }
-    celery_task = parse_document.apply_async(
-        args=[task.id, task.input_s3_key, task.output_s3_prefix, config],
-        queue="parse",
-    )
-    task.celery_task_id = celery_task.id
+    celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, config)
+    task.celery_task_id = celery_task_id
     await db.commit()
 
     return {
@@ -233,11 +230,8 @@ async def agent_parse_file(
         "enable_table": payload.enable_table,
         "page_ranges": payload.page_range,
     }
-    celery_task = parse_document.apply_async(
-        args=[task.id, task.input_s3_key, task.output_s3_prefix, config],
-        queue="parse",
-    )
-    task.celery_task_id = celery_task.id
+    celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, config)
+    task.celery_task_id = celery_task_id
     await db.commit()
 
     return {
