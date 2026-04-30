@@ -9,6 +9,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1.router import api_router
+from app.api.v1.endpoints.extract import router as extract_router
+from app.api.v1.endpoints.agent import router as agent_router
 
 
 @asynccontextmanager
@@ -45,6 +47,10 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
+# MinerU official compatible APIs — mounted at their own prefixes
+app.include_router(extract_router)   # /api/v4/extract/...
+app.include_router(agent_router)     # /api/v1/agent/...
 
 
 @app.get("/health")
