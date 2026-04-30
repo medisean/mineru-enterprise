@@ -47,7 +47,9 @@ FastAPI 后端 (8000)
     ├─→ Redis (Celery 队列 + 缓存)
     ├─→ S3/MinIO (文件存储)
     └─→ Celery Worker
-            └─→ MinerU 解析引擎
+            ├─→ CPU Worker (MINERU_DEVICE=cpu)
+            └─→ GPU Worker (MINERU_DEVICE=cuda, 可选)
+                    └─→ MinerU 解析引擎
 ```
 
 ### 核心数据流
@@ -92,13 +94,33 @@ bash scripts/start.sh dev
 bash scripts/start.sh prod
 ```
 
-### 4. GPU 模式
+### 4. GPU 模式（远端部署）
 
-编辑 `docker-compose.yml`，取消注释 worker 服务下的 `deploy.resources` 部分，然后：
+GPU 模式需要服务器已安装 [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)。
 
 ```bash
 bash scripts/start.sh gpu
 ```
+
+GPU 模式会同时启动 CPU Worker 和 GPU Worker，共享同一个任务队列。GPU Worker 优先消费任务，CPU Worker 作为兜底。
+
+#### 工作原理
+
+| 组件 | CPU 模式 (`dev`) | GPU 模式 (`gpu`) |
+|------|:---:|:---:|
+| Worker 镜像 | `Dockerfile.worker` (python:3.11-slim) | `Dockerfile.worker.gpu` (nvidia/cuda:12.4) |
+| PyTorch | CPU-only wheel | CUDA 12.4 wheel |
+| `MINERU_DEVICE` | `cpu` | `cuda` |
+| GPU 设备 | 无 | nvidia GPU passthrough |
+
+#### 配置项
+
+```env
+MINERU_DEVICE=cpu           # cpu | cuda | mps（默认 cpu，GPU 模式自动设为 cuda）
+NVIDIA_VISIBLE_DEVICES=all  # 指定可见 GPU，如 "0" 或 "0,1"
+```
+
+> 本地开发默认使用 CPU 模式，无需 GPU 驱动。
 
 ---
 
@@ -131,7 +153,8 @@ mineru-enterprise/
 │   │   └── workers/
 │   │       └── parse_worker.py # Celery 任务（调用 MinerU，全参数支持）
 │   ├── Dockerfile              # API 服务镜像
-│   └── Dockerfile.worker       # Worker 镜像（含 MinerU）
+│   ├── Dockerfile.worker       # Worker 镜像（CPU，含 MinerU）
+│   └── Dockerfile.worker.gpu   # Worker 镜像（GPU，CUDA + MinerU）
 │
 ├── frontend/                   # Next.js 14 前端
 │   └── src/

@@ -1,0 +1,55 @@
+# MinerU GPU worker image — CUDA + MinerU model dependencies + LibreOffice for Office->PDF preview
+# Requires: nvidia-container-toolkit on the host
+# Usage:    docker compose --profile gpu up -d
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+# Prevent interactive prompts during apt install
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+
+# System deps: build tools + runtime libs + LibreOffice + CJK fonts
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ cmake libmagic1 libgl1 libglib2.0-0 \
+    libldap2-dev libsasl2-dev \
+    poppler-utils \
+    curl wget \
+    libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui \
+    fonts-noto-cjk \
+    python3.11 python3.11-venv python3.11-dev python3-pip \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Install PyTorch with CUDA support ────────────────────────────────────
+ARG TORCH_VERSION=2.7.0
+ARG CUDA_VERSION=cu124
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+    torch==${TORCH_VERSION} \
+    torchvision \
+    --index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+
+# ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
+COPY requirements.txt requirements-worker.txt ./
+RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements-worker.txt
+
+# Pre-download MinerU pipeline models during build.
+# Uses CUDA device if available at build time, falls back to CPU.
+RUN python3 -c "\
+import os; \
+os.environ['MINERU_DEVICE']='cuda'; \
+from mineru.backend.pipeline.model_init import MineruPipelineModel; \
+model = MineruPipelineModel(device='cuda', lang='ch'); \
+print('MinerU pipeline models pre-downloaded OK (GPU)')" \
+|| python3 -c "\
+import os; \
+os.environ['MINERU_DEVICE']='cpu'; \
+from mineru.backend.pipeline.model_init import MineruPipelineModel; \
+model = MineruPipelineModel(device='cpu', lang='ch'); \
+print('MinerU pipeline models pre-downloaded OK (CPU fallback)')" \
+|| echo "WARN: model pre-download failed, will download on first run"
+
+COPY . .
+
+CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse", "-c", "2", "--loglevel=info"]

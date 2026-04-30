@@ -93,6 +93,7 @@ def parse_document(self, task_id: str, input_s3_key: str, output_s3_prefix: str,
 
         # Build MinerU CLI command with full parameter set
         backend = config.get("backend", settings.MINERU_BACKEND)
+        device = config.get("device", settings.MINERU_DEVICE)
         output_format = config.get("output_format", settings.MINERU_OUTPUT_FORMAT)
         language = config.get("language", "ch")
         is_ocr = config.get("is_ocr")
@@ -107,6 +108,10 @@ def parse_document(self, task_id: str, input_s3_key: str, output_s3_prefix: str,
                 "-p", tmp_path,
                 "-o", output_dir,
             ]
+
+            # Device selection (cpu | cuda | mps)
+            if device and device != "cpu":
+                cmd += ["--device", device]
 
             # Backend model selection
             if backend:

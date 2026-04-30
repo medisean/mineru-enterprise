@@ -31,9 +31,13 @@ case $MODE in
     docker compose --profile production up -d
     ;;
   gpu)
-    echo "启动 GPU 模式..."
-    docker compose --profile minio up -d
-    # Uncomment GPU deploy config in docker-compose.yml first
+    echo "启动 GPU 模式（需要 nvidia-container-toolkit）..."
+    docker compose --profile minio --profile gpu up -d
+    echo -e "${GREEN}✅ 服务已启动（GPU 加速）${NC}"
+    echo "  前端:      http://localhost:3000"
+    echo "  API:       http://localhost:8000/api/docs"
+    echo "  MinIO:     http://localhost:9001"
+    echo "  GPU Worker: 已启用 (MINERU_DEVICE=cuda)"
     ;;
   monitor)
     echo "启动监控模式（含 Flower）..."
@@ -41,7 +45,7 @@ case $MODE in
     echo "  Flower:    http://localhost:5555"
     ;;
   down)
-    docker compose --profile minio --profile monitoring --profile production down
+    docker compose --profile minio --profile monitoring --profile production --profile gpu down
     ;;
   *)
     echo "用法: ./scripts/start.sh [dev|prod|gpu|monitor|down]"

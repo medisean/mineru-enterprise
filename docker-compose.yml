@@ -98,6 +98,7 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
+      MINERU_DEVICE: "cpu"
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,14 +109,38 @@ services:
       - paddleocr_models:/root/.paddleocr
       - mineru_models:/root/.mineru
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse -c 2 --loglevel=info
-    # Uncomment below to enable GPU:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+
+  # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
+  worker-gpu:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker.gpu
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mineru}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/1"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/2"
+      MINERU_DEVICE: "cuda"
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - paddleocr_models:/root/.paddleocr
+      - mineru_models:/root/.mineru
+    command: celery -A app.workers.parse_worker.celery_app worker -Q parse -c 2 --loglevel=info
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles: ["gpu"]
 
   # ── Flower (Celery monitoring, optional) ────────────────────────────────────
   flower:
