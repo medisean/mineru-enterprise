@@ -45,6 +45,8 @@ const ACCEPT_TYPES: Record<string, string[]> = {
   "text/html": [".html"],
 };
 
+const MAX_FILES = 100;
+
 export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -59,20 +61,27 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const [pageRanges, setPageRanges] = useState("");
 
   const onDrop = useCallback((accepted: File[]) => {
-    setFiles((prev) => [
-      ...prev,
-      ...accepted.map((f) => ({
-        file: f,
-        status: "idle" as const,
-        progress: 0,
-      })),
-    ]);
+    setFiles((prev) => {
+      const existingNames = new Set(prev.map((f) => f.file.name));
+      const unique = accepted.filter((f) => !existingNames.has(f.name));
+      const remaining = MAX_FILES - prev.length;
+      const toAdd = remaining > 0 ? unique.slice(0, remaining) : [];
+      return [
+        ...prev,
+        ...toAdd.map((f) => ({
+          file: f,
+          status: "idle" as const,
+          progress: 0,
+        })),
+      ];
+    });
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ACCEPT_TYPES,
     maxSize: 200 * 1024 * 1024,
+    maxFiles: MAX_FILES,
   });
 
   const uploadFile = async (index: number) => {
@@ -152,6 +161,9 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
         </p>
         <p className="text-xs text-gray-400 mt-1">
           {t("upload.supportFormats")}
+        </p>
+        <p className="text-xs text-gray-300 mt-0.5">
+          {t("upload.maxFilesHint", { max: MAX_FILES })}
         </p>
       </div>
 

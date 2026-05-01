@@ -63,6 +63,7 @@ export const zh: Record<string, string> = {
   "upload.pageRanges": "页码范围",
   "upload.pageRangesPlaceholder": "例: 1-10 或 2,4-6",
   "upload.submitButton": "上传并解析 {count} 个文件",
+  "upload.maxFilesHint": "单次最多上传 {max} 个文件",
   "upload.engineAuto": "自动（推荐）",
   "upload.enginePipeline": "Pipeline（传统管道）",
   "upload.engineHybrid": "Hybrid（混合引擎）",
