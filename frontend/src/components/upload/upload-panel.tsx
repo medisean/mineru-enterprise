@@ -4,18 +4,17 @@
  * Step 1: Get presigned URL from backend
  * Step 2: PUT file directly to S3
  * Step 3: Create parse task
- *
- * Enhanced: supports all MinerU formats, full parse options, advanced config
  */
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import {
   Upload, FileText, X, CheckCircle, Loader2,
-  Settings2, ChevronDown, ChevronUp, Languages, Table,
-  Calculator, ScanLine, FileOutput,
+  Settings2, ChevronDown, ChevronUp, Table,
+  Calculator, ScanLine, Languages,
 } from "lucide-react";
 import axios from "axios";
 import { tasksApi } from "@/lib/api";
+import { useT } from "@/lib/i18n/use-translation";
 
 interface UploadedFile {
   file: File;
@@ -46,36 +45,14 @@ const ACCEPT_TYPES: Record<string, string[]> = {
   "text/html": [".html"],
 };
 
-const LANGUAGE_OPTIONS = [
-  { value: "ch", label: "中文 (简体)" },
-  { value: "ch_server", label: "中文 (繁体/手写)" },
-  { value: "en", label: "英文" },
-  { value: "japan", label: "日文" },
-  { value: "korean", label: "韩文" },
-  { value: "chinese_cht", label: "繁体中文" },
-  { value: "latin", label: "拉丁语系 (法/德/西/葡)" },
-  { value: "arabic", label: "阿拉伯语系" },
-  { value: "cyrillic", label: "西里尔语系 (俄/乌)" },
-  { value: "devanagari", label: "天城文语系 (印地语)" },
-];
-
-const OUTPUT_FORMAT_OPTIONS = [
-  { value: "markdown", label: "Markdown", desc: "通用格式，适合 RAG/LLM" },
-  { value: "json", label: "JSON", desc: "结构化数据，方便程序处理" },
-  { value: "both", label: "Markdown + JSON", desc: "同时输出两种格式" },
-  { value: "docx", label: "DOCX", desc: "Word 文档格式" },
-  { value: "html", label: "HTML", desc: "网页格式，可预览" },
-  { value: "latex", label: "LaTeX", desc: "学术论文排版" },
-];
-
 export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const t = useT();
 
   // Parse config — backend defaults to empty (MinerU v3 uses hybrid-auto-engine by default)
   const [backend, setBackend] = useState("");
-  const [outputFormat, setOutputFormat] = useState("markdown");
-  const [language, setLanguage] = useState("ch");
+  const [language, setLanguage] = useState("");  // empty = auto (MinerU defaults to 'ch')
   const [isOcr, setIsOcr] = useState<boolean | null>(null); // null = auto
   const [enableFormula, setEnableFormula] = useState(true);
   const [enableTable, setEnableTable] = useState(true);
@@ -129,8 +106,8 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
         original_filename: item.file.name,
         file_size_bytes: item.file.size,
         backend: backend || undefined,
-        output_format: outputFormat,
-        language,
+        output_format: "markdown",
+        language: language || undefined,
         is_ocr: isOcr,
         enable_formula: enableFormula,
         enable_table: enableTable,
@@ -171,56 +148,47 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
         <input {...getInputProps()} />
         <Upload className="mx-auto h-10 w-10 text-gray-400 mb-3" />
         <p className="text-sm text-gray-600">
-          {isDragActive ? "松开以上传文件" : "拖拽文件到此处，或点击选择"}
+          {isDragActive ? t("upload.dragActive") : t("upload.dragIdle")}
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          支持 PDF/DOC/DOCX/PPT/PPTX/XLSX/PNG/JPG/GIF/BMP/WebP/HTML，最大 200 MB
+          {t("upload.supportFormats")}
         </p>
       </div>
 
-      {/* Basic Config Row */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Engine & Language Config */}
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
-            <FileOutput className="h-3.5 w-3.5" /> 输出格式
-          </label>
-          <select
-            value={outputFormat}
-            onChange={(e) => setOutputFormat(e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
-          >
-            {OUTPUT_FORMAT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
-            <Languages className="h-3.5 w-3.5" /> 文档语言
+            <Languages className="h-3.5 w-3.5" /> {t("upload.docLanguage")}
           </label>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
           >
-            {LANGUAGE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+            <option value="">{t("upload.autoDetect")}</option>
+            <option value="ch">{t("upload.langZh")}</option>
+            <option value="en">{t("upload.langEn")}</option>
+            <option value="japan">{t("upload.langJapan")}</option>
+            <option value="korean">{t("upload.langKorean")}</option>
+            <option value="chinese_cht">{t("upload.langCht")}</option>
+            <option value="latin">{t("upload.langLatin")}</option>
+            <option value="russian">{t("upload.langRussian")}</option>
           </select>
         </div>
         <div>
           <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
-            解析引擎
+            {t("upload.parseEngine")}
           </label>
           <select
             value={backend}
             onChange={(e) => setBackend(e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
           >
-            <option value="">自动（推荐）</option>
-            <option value="pipeline">Pipeline（传统管道）</option>
-            <option value="hybrid-auto-engine">Hybrid（混合引擎）</option>
-            <option value="vlm-auto-engine">VLM（视觉语言模型）</option>
+            <option value="">{t("upload.engineAuto")}</option>
+            <option value="pipeline">{t("upload.enginePipeline")}</option>
+            <option value="hybrid-auto-engine">{t("upload.engineHybrid")}</option>
+            <option value="vlm-auto-engine">{t("upload.engineVlm")}</option>
           </select>
         </div>
       </div>
@@ -231,7 +199,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
         className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
       >
         <Settings2 className="h-3.5 w-3.5" />
-        高级解析选项
+        {t("upload.advancedOptions")}
         {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
       </button>
 
@@ -241,7 +209,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
           {/* OCR */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-1.5 text-xs text-gray-600">
-              <ScanLine className="h-3.5 w-3.5" /> OCR 文字识别
+              <ScanLine className="h-3.5 w-3.5" /> {t("upload.ocrLabel")}
             </label>
             <select
               value={isOcr === null ? "auto" : isOcr ? "on" : "off"}
@@ -251,16 +219,16 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
               }}
               className="text-xs border border-gray-200 rounded-md px-2 py-1"
             >
-              <option value="auto">自动检测</option>
-              <option value="on">强制开启</option>
-              <option value="off">关闭</option>
+              <option value="auto">{t("upload.ocrAuto")}</option>
+              <option value="on">{t("upload.ocrOn")}</option>
+              <option value="off">{t("upload.ocrOff")}</option>
             </select>
           </div>
 
           {/* Formula */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-1.5 text-xs text-gray-600">
-              <Calculator className="h-3.5 w-3.5" /> 公式识别
+              <Calculator className="h-3.5 w-3.5" /> {t("upload.formulaLabel")}
             </label>
             <button
               onClick={() => setEnableFormula(!enableFormula)}
@@ -277,7 +245,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
           {/* Table */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-1.5 text-xs text-gray-600">
-              <Table className="h-3.5 w-3.5" /> 表格识别
+              <Table className="h-3.5 w-3.5" /> {t("upload.tableLabel")}
             </label>
             <button
               onClick={() => setEnableTable(!enableTable)}
@@ -294,13 +262,13 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
           {/* Page Ranges */}
           <div>
             <label className="flex items-center gap-1.5 text-xs text-gray-600 mb-1">
-              <FileText className="h-3.5 w-3.5" /> 页码范围
+              <FileText className="h-3.5 w-3.5" /> {t("upload.pageRanges")}
             </label>
             <input
               type="text"
               value={pageRanges}
               onChange={(e) => setPageRanges(e.target.value)}
-              placeholder="例: 1-10 或 2,4-6"
+              placeholder={t("upload.pageRangesPlaceholder")}
               className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 placeholder:text-gray-300"
             />
           </div>
@@ -351,7 +319,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
           onClick={uploadAll}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
         >
-          上传并解析 {pendingCount} 个文件
+          {t("upload.submitButton", { count: pendingCount })}
         </button>
       )}
     </div>

@@ -62,8 +62,8 @@ async def create_task(
         input_s3_key=payload.s3_key,
         output_s3_prefix=f"results/{current_user.id}/{uuid.uuid4()}",
         backend=payload.backend,
-        output_format=payload.output_format,
-        language=payload.language or "ch",
+        output_format=payload.output_format or "markdown",
+        language=payload.language or "",
         is_ocr=payload.is_ocr if payload.is_ocr is not None else False,
         enable_formula=payload.enable_formula,
         enable_table=payload.enable_table,
@@ -78,8 +78,8 @@ async def create_task(
     # Dispatch to Celery
     celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
         "backend": payload.backend,
-        "output_format": payload.output_format,
-        "language": payload.language or "ch",
+        "output_format": payload.output_format or "markdown",
+        "language": payload.language or "",
         "is_ocr": payload.is_ocr,
         "enable_formula": payload.enable_formula,
         "enable_table": payload.enable_table,
@@ -400,8 +400,8 @@ async def batch_create_tasks(
             input_s3_key=payload.s3_key,
             output_s3_prefix=f"results/{current_user.id}/{uuid.uuid4()}",
             backend=payload.backend,
-            output_format=payload.output_format,
-            language=payload.language or "ch",
+            output_format=payload.output_format or "markdown",
+            language=payload.language or "",
             is_ocr=payload.is_ocr if payload.is_ocr is not None else False,
             enable_formula=payload.enable_formula,
             enable_table=payload.enable_table,
@@ -431,8 +431,8 @@ async def batch_create_tasks(
         if task:
             celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
                 "backend": payload.backend,
-                "output_format": payload.output_format,
-                "language": payload.language or "ch",
+                "output_format": payload.output_format or "markdown",
+                "language": payload.language or "",
                 "is_ocr": payload.is_ocr,
                 "enable_formula": payload.enable_formula,
                 "enable_table": payload.enable_table,

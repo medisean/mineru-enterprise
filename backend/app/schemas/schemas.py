@@ -79,7 +79,7 @@ class CreateTaskRequest(BaseModel):
     file_size_bytes: int
     backend: Optional[str] = ""    # pipeline | hybrid-auto-engine | vlm-auto-engine | empty=MinerU default
     output_format: Optional[str] = "markdown"   # markdown | json | both | docx | html | latex
-    language: Optional[str] = "ch"         # ch | en | japan | korean | ch_server | ...
+    language: Optional[str] = ""          # empty=auto-detect | ch | en | japan | korean | ...
     is_ocr: Optional[bool] = None          # None = auto-detect
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True

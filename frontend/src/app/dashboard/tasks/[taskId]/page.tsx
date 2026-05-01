@@ -18,7 +18,9 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { zhCN } from "date-fns/locale";
+import { zhCN, enUS } from "date-fns/locale";
+import { useT } from "@/lib/i18n/use-translation";
+import { useI18nStore } from "@/lib/i18n-store";
 
 // Dynamic import PDF viewer to avoid SSR issues (pdfjs-dist uses browser APIs)
 const PdfViewer = dynamic(() => import("@/components/pdf-viewer"), {
@@ -57,12 +59,12 @@ interface PreviewData {
   json_content: string | null;
 }
 
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  pending: { label: "等待中", color: "text-yellow-600 bg-yellow-50" },
-  processing: { label: "解析中", color: "text-blue-600 bg-blue-50" },
-  success: { label: "完成", color: "text-green-600 bg-green-50" },
-  failed: { label: "失败", color: "text-red-600 bg-red-50" },
-  cancelled: { label: "已取消", color: "text-gray-500 bg-gray-100" },
+const STATUS_COLORS: Record<string, string> = {
+  pending: "text-yellow-600 bg-yellow-50",
+  processing: "text-blue-600 bg-blue-50",
+  success: "text-green-600 bg-green-50",
+  failed: "text-red-600 bg-red-50",
+  cancelled: "text-gray-500 bg-gray-100",
 };
 
 const PDF_EXTENSIONS = ["pdf"];
@@ -95,6 +97,17 @@ function getOfficeFileType(filename: string) {
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const router = useRouter();
+  const t = useT();
+  const dateLocale = useI18nStore((s) => s.locale) === "zh" ? zhCN : enUS;
+
+  const STATUS_MAP: Record<string, { label: string; color: string }> = {
+    pending: { label: t("status.pending"), color: STATUS_COLORS.pending },
+    processing: { label: t("status.processing"), color: STATUS_COLORS.processing },
+    success: { label: t("status.success"), color: STATUS_COLORS.success },
+    failed: { label: t("status.failed"), color: STATUS_COLORS.failed },
+    cancelled: { label: t("status.cancelled"), color: STATUS_COLORS.cancelled },
+  };
+
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [zoom, setZoom] = useState(100);
@@ -102,7 +115,6 @@ export default function TaskDetailPage() {
   // Scroll sync refs
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncingScroll = useRef(false);
 
   const { data: task, isLoading, isError, refetch } = useQuery({
     queryKey: ["task", taskId],
@@ -164,37 +176,23 @@ export default function TaskDetailPage() {
       await apiClient.post(`/tasks/${taskId}/retry`);
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "重试失败，请稍后再试");
+      alert(err?.response?.data?.detail || t("taskDetail.retryFailed"));
     } finally {
       setRetrying(false);
     }
   };
 
-  // ── Scroll sync ──────────────────────────────────────────────────────
-  const handleScroll = useCallback((source: "left" | "right") => {
-    if (isSyncingScroll.current) return;
-    isSyncingScroll.current = true;
-
-    const srcEl = source === "left" ? leftScrollRef.current : rightScrollRef.current;
-    const dstEl = source === "left" ? rightScrollRef.current : leftScrollRef.current;
-    if (!srcEl || !dstEl) {
-      isSyncingScroll.current = false;
-      return;
-    }
+  // ── Scroll sync (one-way: left → right only) ──────────────────────────
+  const handleLeftScroll = useCallback(() => {
+    const srcEl = leftScrollRef.current;
+    const dstEl = rightScrollRef.current;
+    if (!srcEl || !dstEl) return;
 
     const srcMax = srcEl.scrollHeight - srcEl.clientHeight;
-    if (srcMax <= 0) {
-      isSyncingScroll.current = false;
-      return;
-    }
+    if (srcMax <= 0) return;
     const ratio = srcEl.scrollTop / srcMax;
     const dstMax = dstEl.scrollHeight - dstEl.clientHeight;
     dstEl.scrollTop = ratio * dstMax;
-
-    // Use requestAnimationFrame to avoid jank
-    requestAnimationFrame(() => {
-      isSyncingScroll.current = false;
-    });
   }, []);
 
   if (isLoading) {
@@ -210,9 +208,9 @@ export default function TaskDetailPage() {
       <div className="flex items-center justify-center h-[calc(100vh)] bg-gray-50">
         <div className="text-center">
           <AlertCircle className="mx-auto h-8 w-8 text-red-400 mb-3" />
-          <p className="text-sm text-red-500">任务不存在或加载失败</p>
+          <p className="text-sm text-red-500">{t("taskDetail.notFound")}</p>
           <button onClick={() => router.push("/dashboard")} className="text-sm text-blue-600 mt-2 hover:underline">
-            返回控制台
+            {t("taskDetail.backToConsole")}
           </button>
         </div>
       </div>
@@ -231,7 +229,7 @@ export default function TaskDetailPage() {
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            返回任务列表
+            {t("taskDetail.backToTaskList")}
           </button>
 
           <div className="bg-white rounded-xl border border-gray-100 p-6">
@@ -242,7 +240,7 @@ export default function TaskDetailPage() {
                   <h1 className="text-base font-medium text-gray-900 truncate" title={task.original_filename}>{task.original_filename}</h1>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB
-                    {task.completed_at && ` · 耗时 ${formatDistanceToNow(new Date(task.started_at || task.created_at), { locale: zhCN })}`}
+                    {task.completed_at && ` · ${t("taskDetail.elapsed")} ${formatDistanceToNow(new Date(task.started_at || task.created_at), { locale: dateLocale })}`}
                   </p>
                 </div>
               </div>
@@ -260,7 +258,7 @@ export default function TaskDetailPage() {
 
             {task.error_message && (
               <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
-                <p className="text-xs text-red-600 font-medium mb-1">解析失败</p>
+                <p className="text-xs text-red-600 font-medium mb-1">{t("taskDetail.parseFailedTitle")}</p>
                 <p className="text-xs text-red-500">{task.error_message}</p>
               </div>
             )}
@@ -273,7 +271,7 @@ export default function TaskDetailPage() {
                   className="flex items-center gap-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors"
                 >
                   {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                  {retrying ? "重新提交中..." : "重新解析"}
+                  {retrying ? t("taskDetail.retrying") : t("taskDetail.reparse")}
                 </button>
               </div>
             )}
@@ -304,7 +302,7 @@ export default function TaskDetailPage() {
             className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
-            任务列表
+            {t("taskDetail.taskList")}
           </button>
           <div className="w-px h-4 bg-gray-200 flex-shrink-0" />
           <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
@@ -318,7 +316,7 @@ export default function TaskDetailPage() {
               className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
             >
               <Download className="h-3.5 w-3.5" />
-              下载结果
+              {t("taskDetail.downloadResults")}
             </button>
           )}
         </div>
@@ -329,12 +327,12 @@ export default function TaskDetailPage() {
         {/* Left panel: Source file preview */}
         <div className="w-1/2 border-r border-gray-200 flex flex-col bg-gray-100">
           <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-100 flex-shrink-0">
-            <span className="text-xs font-medium text-gray-600">原文预览</span>
+            <span className="text-xs font-medium text-gray-600">{t("taskDetail.sourcePreview")}</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setZoom((z) => Math.max(50, z - 10))}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
-                title="缩小"
+                title={t("taskDetail.zoomOut")}
               >
                 <ZoomOut className="h-3.5 w-3.5" />
               </button>
@@ -342,7 +340,7 @@ export default function TaskDetailPage() {
               <button
                 onClick={() => setZoom((z) => Math.min(200, z + 10))}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
-                title="放大"
+                title={t("taskDetail.zoomIn")}
               >
                 <ZoomIn className="h-3.5 w-3.5" />
               </button>
@@ -350,7 +348,7 @@ export default function TaskDetailPage() {
           </div>
           <div
             ref={leftScrollRef}
-            onScroll={() => handleScroll("left")}
+            onScroll={handleLeftScroll}
             className="flex-1 overflow-auto p-4"
           >
             {usePdfRenderer ? (
@@ -359,7 +357,7 @@ export default function TaskDetailPage() {
               <div className="flex justify-center">
                 <img
                   src={originFileUrl}
-                  alt="源文件预览"
+                  alt={t("taskDetail.sourcePreviewAlt")}
                   className="bg-white shadow-lg rounded max-w-none"
                   style={{ width: `${zoom}%` }}
                 />
@@ -372,9 +370,9 @@ export default function TaskDetailPage() {
                   </div>
                   <p className="text-sm font-medium text-gray-700 mb-1 truncate" title={task.original_filename}>{task.original_filename}</p>
                   <p className="text-xs text-gray-400 mb-4">
-                    {officeType} 文件 · {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB
+                    {t("taskDetail.fileType", { type: officeType })} · {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB
                   </p>
-                  <p className="text-xs text-gray-400 mb-4">该文件类型暂不支持在线预览，请下载后查看</p>
+                  <p className="text-xs text-gray-400 mb-4">{t("taskDetail.noPreview")}</p>
                   <a
                     href={originFileUrl}
                     target="_blank"
@@ -382,7 +380,7 @@ export default function TaskDetailPage() {
                     className="inline-flex items-center gap-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    下载原文件
+                    {t("taskDetail.downloadOriginal")}
                   </a>
                 </div>
               </div>
@@ -393,7 +391,7 @@ export default function TaskDetailPage() {
                 <p className="text-xs text-gray-300">
                   {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB · {task.backend} · {task.language}
                 </p>
-                <p className="text-xs text-gray-300 mt-4">该文件类型暂不支持在线预览</p>
+                <p className="text-xs text-gray-300 mt-4">{t("taskDetail.noPreviewGeneric")}</p>
               </div>
             )}
           </div>
@@ -411,14 +409,13 @@ export default function TaskDetailPage() {
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded transition-colors"
             >
               {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-              {copied ? "已复制" : "复制"}
+              {copied ? t("taskDetail.copied") : t("taskDetail.copy")}
             </button>
           </div>
 
           {/* Markdown content */}
           <div
             ref={rightScrollRef}
-            onScroll={() => handleScroll("right")}
             className="flex-1 overflow-auto p-6"
           >
             {previewLoading ? (
@@ -437,7 +434,7 @@ export default function TaskDetailPage() {
                   )
                 ) : (
                   <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap">
-                    {preview?.content || "暂无预览内容"}
+                    {preview?.content || t("taskDetail.noPreviewContent")}
                   </pre>
                 )}
               </div>

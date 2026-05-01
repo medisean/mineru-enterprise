@@ -13,6 +13,7 @@ import {
   LogOut, FileText, Plus, Loader2, ChevronLeft, ChevronRight,
   CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
 } from "lucide-react";
+import { useT } from "@/lib/i18n/use-translation";
 
 interface RecentTask {
   id: string;
@@ -40,6 +41,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const wsRefs = useRef<Map<string, WebSocket>>(new Map());
+  const t = useT();
 
   const [collapsed, setCollapsed] = useState(false);
 
@@ -144,27 +146,34 @@ export default function DashboardLayout({
         <div className="p-3 border-b border-gray-100 flex items-center gap-2">
           {!collapsed && (
             <>
-              <LayoutDashboard className="h-5 w-5 text-blue-600 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base font-bold text-gray-900 truncate">MinerU</h1>
-              </div>
+              <Link href="/dashboard" className="flex items-center gap-2 flex-1 min-w-0 group">
+                <LayoutDashboard className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-base font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">MinerU</h1>
+                </div>
+              </Link>
               <button
                 onClick={() => setCollapsed((c) => !c)}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
-                title="收起侧边栏"
+                title={t("sidebar.collapse")}
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
             </>
           )}
           {collapsed && (
-            <button
-              onClick={() => setCollapsed((c) => !c)}
-              className="w-full flex items-center justify-center p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              title="展开侧边栏"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <div className="w-full flex flex-col items-center gap-1">
+              <Link href="/dashboard" className="p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="MinerU">
+                <LayoutDashboard className="h-4 w-4" />
+              </Link>
+              <button
+                onClick={() => setCollapsed((c) => !c)}
+                className="w-full flex items-center justify-center p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title={t("sidebar.expand")}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -172,14 +181,14 @@ export default function DashboardLayout({
         <nav className={`p-2 space-y-0.5 ${collapsed ? "px-1.5" : ""}`}>
           <NavItem
             icon={<Plus className="h-4 w-4" />}
-            label="新解析"
+            label={t("sidebar.newParse")}
             collapsed={collapsed}
             active={pathname === "/dashboard"}
             href="/dashboard"
           />
           <NavItem
             icon={<FileText className="h-4 w-4" />}
-            label="任务管理"
+            label={t("sidebar.taskMgmt")}
             collapsed={collapsed}
             active={pathname.startsWith("/dashboard/tasks") && !isTaskDetail}
             href="/dashboard?tab=tasks"
@@ -190,11 +199,11 @@ export default function DashboardLayout({
         {!collapsed && (
           <div className="flex-1 min-h-0 flex flex-col border-t border-gray-100">
             <div className="px-4 pt-3 pb-1">
-              <span className="text-xs font-medium text-gray-500">最近任务</span>
+              <span className="text-xs font-medium text-gray-500">{t("sidebar.recentTasks")}</span>
             </div>
             <div className="flex-1 overflow-y-auto px-2 pb-2">
               {recentTasks.length === 0 ? (
-                <p className="text-xs text-gray-300 text-center py-4">暂无任务</p>
+                <p className="text-xs text-gray-300 text-center py-4">{t("sidebar.noTasks")}</p>
               ) : (
                 <div className="space-y-1">
                   {recentTasks.map((task) => {
@@ -253,7 +262,7 @@ export default function DashboardLayout({
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 <LogOut className="h-4 w-4" />
-                退出登录
+                {t("sidebar.logout")}
               </button>
             </div>
           )}
@@ -268,7 +277,7 @@ export default function DashboardLayout({
               <button
                 onClick={handleLogout}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors"
-                title="退出登录"
+                title={t("sidebar.logout")}
               >
                 <LogOut className="h-3.5 w-3.5" />
               </button>

@@ -1,9 +1,17 @@
 "use client";
 /**
- * Global providers: React Query, Toaster, etc.
+ * Global providers: React Query, Toaster, Language Toggle, etc.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useI18nStore } from "@/lib/i18n-store";
+
+function useLangAttribute() {
+  const locale = useI18nStore((s) => s.locale);
+  useEffect(() => {
+    document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  }, [locale]);
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -17,6 +25,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       })
   );
+
+  useLangAttribute();
 
   return (
     <QueryClientProvider client={queryClient}>

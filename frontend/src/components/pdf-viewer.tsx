@@ -8,6 +8,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { Loader2, AlertCircle } from "lucide-react";
+import { useT } from "@/lib/i18n/use-translation";
 
 // Configure pdf.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -19,6 +20,7 @@ interface PdfViewerProps {
 
 export default function PdfViewer({ url, zoom }: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0);
+  const t = useT();
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -37,7 +39,7 @@ export default function PdfViewer({ url, zoom }: PdfViewerProps) {
         error={
           <div className="text-center py-20">
             <AlertCircle className="mx-auto h-8 w-8 text-red-300 mb-2" />
-            <p className="text-xs text-red-400">PDF 加载失败</p>
+            <p className="text-xs text-red-400">{t("pdf.loadFailed")}</p>
           </div>
         }
       >

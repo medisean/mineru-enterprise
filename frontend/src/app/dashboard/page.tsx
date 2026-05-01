@@ -10,12 +10,15 @@ import { UploadPanel } from "@/components/upload/upload-panel";
 import { TaskList } from "@/components/tasks/task-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import { useT } from "@/lib/i18n/use-translation";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 
 type Tab = "upload" | "tasks";
 
 function DashboardContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const t = useT();
 
   const initialTab = (searchParams.get("tab") as Tab) || "upload";
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -38,11 +41,12 @@ function DashboardContent() {
 
   return (
     <div className="p-8">
+      <LanguageToggle />
       {tab === "upload" ? (
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">上传文档</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">{t("dashboard.uploadTitle")}</h2>
           <p className="text-sm text-gray-500 mb-6">
-            支持 PDF/DOC/DOCX/PPT/PPTX/XLSX/图片/HTML，解析为 Markdown、JSON、DOCX、HTML 或 LaTeX
+            {t("dashboard.uploadDesc")}
           </p>
           <div className="bg-white rounded-2xl border border-gray-100 p-6">
             <UploadPanel onTaskCreated={handleTaskCreated} />

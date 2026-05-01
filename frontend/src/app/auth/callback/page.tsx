@@ -8,6 +8,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { authApi } from "@/lib/api";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
+import { useT } from "@/lib/i18n/use-translation";
+import { t as _t } from "@/lib/i18n";
+import { useI18nStore } from "@/lib/i18n-store";
 
 function CallbackContent() {
   const router = useRouter();
@@ -15,6 +18,8 @@ function CallbackContent() {
   const { setTokens, fetchMe } = useAuthStore();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const t = useT();
+  const locale = useI18nStore((s) => s.locale);
 
   useEffect(() => {
     const code = searchParams.get("code");
@@ -23,7 +28,7 @@ function CallbackContent() {
 
     if (!code || !state) {
       setStatus("error");
-      setErrorMsg("缺少授权参数，请重新登录");
+      setErrorMsg(t("callback.missingParams"));
       return;
     }
 
@@ -37,10 +42,10 @@ function CallbackContent() {
         setTimeout(() => router.push("/dashboard"), 800);
       } catch (err: unknown) {
         setStatus("error");
-        setErrorMsg(err instanceof Error ? err.message : "SSO 登录失败，请联系管理员");
+        setErrorMsg(err instanceof Error ? err.message : t("callback.ssoFailed"));
       }
     })();
-  }, [searchParams, setTokens, fetchMe, router]);
+  }, [searchParams, setTokens, fetchMe, router, t]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -48,13 +53,13 @@ function CallbackContent() {
         {status === "loading" && (
           <>
             <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
-            <p className="text-sm text-gray-600">正在验证登录信息...</p>
+            <p className="text-sm text-gray-600">{t("callback.verifying")}</p>
           </>
         )}
         {status === "success" && (
           <>
             <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-4" />
-            <p className="text-sm text-green-600">登录成功，正在跳转...</p>
+            <p className="text-sm text-green-600">{t("callback.success")}</p>
           </>
         )}
         {status === "error" && (
@@ -65,7 +70,7 @@ function CallbackContent() {
               onClick={() => router.push("/login")}
               className="text-sm text-blue-600 hover:underline"
             >
-              返回登录页
+              {t("callback.backToLogin")}
             </button>
           </>
         )}
@@ -75,13 +80,14 @@ function CallbackContent() {
 }
 
 export default function AuthCallbackPage() {
+  const locale = useI18nStore((s) => s.locale);
   return (
     <Suspense
       fallback={
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
-            <p className="text-sm text-gray-600">正在验证登录信息...</p>
+            <p className="text-sm text-gray-600">{_t(locale, "callback.verifying")}</p>
           </div>
         </div>
       }

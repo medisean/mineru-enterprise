@@ -85,7 +85,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         backend = config.get("backend", settings.MINERU_BACKEND)
         device = config.get("device", settings.MINERU_DEVICE)
         output_format = config.get("output_format", settings.MINERU_OUTPUT_FORMAT)
-        language = config.get("language", "ch")
+        language = config.get("language", "")
         is_ocr = config.get("is_ocr")
         enable_formula = config.get("enable_formula", True)
         enable_table = config.get("enable_table", True)

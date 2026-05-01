@@ -5,19 +5,22 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { authApi } from "@/lib/api";
 import { Loader2, FileText } from "lucide-react";
+import { useT } from "@/lib/i18n/use-translation";
 
 const SSO_PROVIDERS = [
-  { id: "oidc", label: "企业 SSO 登录", enabled: process.env.NEXT_PUBLIC_OIDC_ENABLED === "true" },
-  { id: "wechat_work", label: "企业微信登录", enabled: process.env.NEXT_PUBLIC_WECHAT_WORK_ENABLED === "true" },
-  { id: "dingtalk", label: "钉钉登录", enabled: process.env.NEXT_PUBLIC_DINGTALK_ENABLED === "true" },
+  { id: "oidc", labelKey: "login.ssoOidc", enabled: process.env.NEXT_PUBLIC_OIDC_ENABLED === "true" },
+  { id: "wechat_work", labelKey: "login.ssoWechatWork", enabled: process.env.NEXT_PUBLIC_WECHAT_WORK_ENABLED === "true" },
+  { id: "dingtalk", labelKey: "login.ssoDingtalk", enabled: process.env.NEXT_PUBLIC_DINGTALK_ENABLED === "true" },
 ];
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuthStore();
+  const t = useT();
   const [isRegister, setIsRegister] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,9 +47,9 @@ export default function LoginPage() {
       if (detail) {
         setError(detail);
       } else if (err?.response?.status === 0 || !err?.response) {
-        setError("网络连接失败，请检查后端服务是否启动");
+        setError(t("login.networkError"));
       } else {
-        setError("登录失败，请稍后重试");
+        setError(t("login.loginFailed"));
       }
     } finally {
       setIsLoading(false);
@@ -72,9 +75,9 @@ export default function LoginPage() {
       if (detail) {
         setError(detail);
       } else if (err?.response?.status === 0 || !err?.response) {
-        setError("网络连接失败，请检查后端服务是否启动");
+        setError(t("login.networkError"));
       } else {
-        setError("注册失败，请稍后重试");
+        setError(t("login.registerFailed"));
       }
     } finally {
       setIsLoading(false);
@@ -90,7 +93,7 @@ export default function LoginPage() {
         .replace(/redirect_uri=[^&]+/, `redirect_uri=${encodeURIComponent(callbackUrl)}`);
       window.location.href = authUrl;
     } catch {
-      setError("SSO 跳转失败，请联系管理员");
+      setError(t("login.ssoRedirectFailed"));
     }
   };
 
@@ -100,12 +103,12 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="text-center mb-8">
+        <Link href="/" className="text-center mb-8 block">
           <div className="mx-auto w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mb-4">
             <FileText className="h-6 w-6 text-white" />
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900">MinerU Enterprise</h1>
-        </div>
+          <h1 className="text-2xl font-semibold text-gray-900">MinerU</h1>
+        </Link>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
           {/* Tab switch */}
@@ -116,7 +119,7 @@ export default function LoginPage() {
                 !isRegister ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
               }`}
             >
-              登录
+              {t("login.tabLogin")}
             </button>
             <button
               onClick={() => { setIsRegister(true); setError(""); }}
@@ -124,7 +127,7 @@ export default function LoginPage() {
                 isRegister ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
               }`}
             >
-              注册
+              {t("login.tabRegister")}
             </button>
           </div>
 
@@ -132,25 +135,25 @@ export default function LoginPage() {
             /* Login form */
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">用户名 / 邮箱</label>
+                <label className="block text-xs text-gray-500 mb-1">{t("login.usernameLabel")}</label>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="请输入用户名或邮箱"
+                  placeholder={t("login.usernamePlaceholder")}
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">密码</label>
+                <label className="block text-xs text-gray-500 mb-1">{t("login.passwordLabel")}</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="请输入密码"
+                  placeholder={t("login.passwordPlaceholder")}
                 />
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
@@ -160,14 +163,14 @@ export default function LoginPage() {
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                登录
+                {t("login.submitLogin")}
               </button>
             </form>
           ) : (
             /* Register form */
             <form onSubmit={handleRegister} className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">邮箱</label>
+                <label className="block text-xs text-gray-500 mb-1">{t("login.emailLabel")}</label>
                 <input
                   type="email"
                   value={regEmail}
@@ -178,18 +181,18 @@ export default function LoginPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">用户名</label>
+                <label className="block text-xs text-gray-500 mb-1">{t("login.regUsernameLabel")}</label>
                 <input
                   type="text"
                   value={regUsername}
                   onChange={(e) => setRegUsername(e.target.value)}
                   required
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="3-32 字符"
+                  placeholder={t("login.regUsernamePlaceholder")}
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">密码</label>
+                <label className="block text-xs text-gray-500 mb-1">{t("login.passwordLabel")}</label>
                 <input
                   type="password"
                   value={regPassword}
@@ -197,17 +200,17 @@ export default function LoginPage() {
                   required
                   minLength={6}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="至少 6 位"
+                  placeholder={t("login.regPasswordPlaceholder")}
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">姓名（可选）</label>
+                <label className="block text-xs text-gray-500 mb-1">{t("login.fullNameLabel")}</label>
                 <input
                   type="text"
                   value={regFullName}
                   onChange={(e) => setRegFullName(e.target.value)}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="真实姓名"
+                  placeholder={t("login.fullNamePlaceholder")}
                 />
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
@@ -217,7 +220,7 @@ export default function LoginPage() {
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                注册并登录
+                {t("login.submitRegister")}
               </button>
             </form>
           )}
@@ -230,7 +233,7 @@ export default function LoginPage() {
                   <div className="w-full border-t border-gray-100" />
                 </div>
                 <div className="relative flex justify-center">
-                  <span className="bg-white px-3 text-xs text-gray-400">或使用企业账号登录</span>
+                  <span className="bg-white px-3 text-xs text-gray-400">{t("login.orSSO")}</span>
                 </div>
               </div>
               <div className="space-y-2">
@@ -240,7 +243,7 @@ export default function LoginPage() {
                     onClick={() => handleSSO(provider.id)}
                     className="w-full border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-sm text-gray-700 py-2.5 rounded-lg transition-colors"
                   >
-                    {provider.label}
+                    {t(provider.labelKey)}
                   </button>
                 ))}
               </div>

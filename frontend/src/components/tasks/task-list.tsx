@@ -13,6 +13,7 @@ import {
   Download, X, AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useT } from "@/lib/i18n/use-translation";
 
 interface Task {
   id: string;
@@ -31,20 +32,20 @@ interface Task {
   completed_at?: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  pending: { label: "等待中", color: "text-yellow-500", icon: <Clock className="h-4 w-4" /> },
-  processing: { label: "解析中", color: "text-blue-500", icon: <Loader2 className="h-4 w-4 animate-spin" /> },
-  success: { label: "解析成功", color: "text-green-500", icon: <CheckCircle2 className="h-4 w-4" /> },
-  failed: { label: "解析失败", color: "text-red-500", icon: <XCircle className="h-4 w-4" /> },
-  cancelled: { label: "已取消", color: "text-gray-400", icon: <XCircle className="h-4 w-4" /> },
+const STATUS_CONFIG: Record<string, { labelKey: string; color: string; icon: React.ReactNode }> = {
+  pending: { labelKey: "status.pending", color: "text-yellow-500", icon: <Clock className="h-4 w-4" /> },
+  processing: { labelKey: "status.processing", color: "text-blue-500", icon: <Loader2 className="h-4 w-4 animate-spin" /> },
+  success: { labelKey: "status.parseSuccess", color: "text-green-500", icon: <CheckCircle2 className="h-4 w-4" /> },
+  failed: { labelKey: "status.parseFailed", color: "text-red-500", icon: <XCircle className="h-4 w-4" /> },
+  cancelled: { labelKey: "status.cancelled", color: "text-gray-400", icon: <XCircle className="h-4 w-4" /> },
 };
 
 const STATUS_FILTERS = [
-  { value: "", label: "全部" },
-  { value: "pending", label: "等待中" },
-  { value: "processing", label: "解析中" },
-  { value: "success", label: "完成" },
-  { value: "failed", label: "失败" },
+  { value: "", labelKey: "status.all" },
+  { value: "pending", labelKey: "status.pending" },
+  { value: "processing", labelKey: "status.processing" },
+  { value: "success", labelKey: "status.success" },
+  { value: "failed", labelKey: "status.failed" },
 ];
 
 const FILE_TYPE_MAP: Record<string, { icon: React.ElementType; color: string }> = {
@@ -126,6 +127,7 @@ function TaskRow({
   onDeleteRequest: (id: string, label: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const t = useT();
   const wsRef = useRef<WebSocket | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -216,7 +218,7 @@ function TaskRow({
       <td className="py-4 pr-5">
         <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
           <span className={statusCfg.color}>{statusCfg.icon}</span>
-          {statusCfg.label}
+          {t(statusCfg.labelKey)}
         </span>
         {task.status === "processing" && (
           <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden w-20">
@@ -251,14 +253,14 @@ function TaskRow({
               className="inline-flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
             >
               {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-              重试
+              {t("tasks.retry")}
             </button>
           )}
           <button
             onClick={handleDelete}
             disabled={deleting}
             className="inline-flex items-center text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors disabled:opacity-50"
-            title="删除"
+            title={t("tasks.delete")}
           >
             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
           </button>
@@ -269,6 +271,7 @@ function TaskRow({
 }
 
 export function TaskList() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
@@ -319,7 +322,7 @@ export function TaskList() {
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
   const isEmpty = !items.length;
 
-  const currentStatusLabel = STATUS_FILTERS.find(f => f.value === statusFilter)?.label || "全部状态";
+  const currentStatusLabel = STATUS_FILTERS.find(f => f.value === statusFilter)?.labelKey ? t(STATUS_FILTERS.find(f => f.value === statusFilter)!.labelKey) : t("status.all");
 
   // Selection helpers
   const allSelected = items.length > 0 && items.every((t: Task) => selectedIds.has(t.id));
@@ -349,7 +352,7 @@ export function TaskList() {
   const handleBatchDownload = async () => {
     const successTasks = items.filter((t: Task) => t.status === "success" && selectedIds.has(t.id));
     if (!successTasks.length) {
-      alert("请选择已完成的任务进行下载");
+      alert(t("tasks.selectCompleted"));
       return;
     }
     setDownloading(true);
@@ -380,7 +383,7 @@ export function TaskList() {
         setTimeout(() => setDownloadNotice(null), 15000);
       }
     } catch {
-      alert("下载失败，请稍后重试");
+      alert(t("tasks.downloadFailed"));
     } finally {
       setDownloading(false);
     }
@@ -390,7 +393,7 @@ export function TaskList() {
   const requestBatchDelete = () => {
     setDeleteConfirm({
       ids: Array.from(selectedIds),
-      label: `选中的 ${selectedCount} 个任务`,
+      label: t("tasks.selectedBatch", { count: selectedCount }),
     });
   };
 
@@ -408,7 +411,7 @@ export function TaskList() {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
     } catch {
-      alert("部分任务删除失败，请稍后重试");
+      alert(t("tasks.deleteFailed"));
     } finally {
       setDownloading(false);
     }
@@ -424,7 +427,7 @@ export function TaskList() {
 
   if (isError) {
     return (
-      <div className="text-center py-12 text-sm text-red-500">加载失败，请刷新页面</div>
+      <div className="text-center py-12 text-sm text-red-500">{t("tasks.loadFailed")}</div>
     );
   }
 
@@ -432,14 +435,14 @@ export function TaskList() {
     <div className="space-y-4">
       {/* Title + Search & Filter bar */}
       <div className="flex items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">全部任务</h2>
+        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">{t("tasks.allTasks")}</h2>
 
         {/* Search input */}
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="搜索文件名..."
+            placeholder={t("tasks.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors bg-white"
@@ -467,7 +470,7 @@ export function TaskList() {
                       statusFilter === f.value ? "text-blue-600 font-medium bg-blue-50" : "text-gray-600"
                     }`}
                   >
-                    {f.label}
+                    {t(f.labelKey)}
                   </button>
                 ))}
               </div>
@@ -476,7 +479,7 @@ export function TaskList() {
         </div>
 
         <span className="text-xs text-gray-400 ml-auto">
-          共 {data?.total ?? 0} 条
+          {t("tasks.totalCount", { count: data?.total ?? 0 })}
         </span>
       </div>
 
@@ -485,7 +488,7 @@ export function TaskList() {
         <div className="text-center py-12">
           <FileText className="mx-auto h-10 w-10 text-gray-200 mb-3" />
           <p className="text-sm text-gray-400">
-            {statusFilter ? `没有"${STATUS_FILTERS.find(f => f.value === statusFilter)?.label}"状态的任务` : "暂无任务，上传文件开始解析"}
+            {statusFilter ? t("tasks.noTasksFiltered", { status: t(STATUS_FILTERS.find(f => f.value === statusFilter)!.labelKey) }) : t("tasks.noTasksEmpty")}
           </p>
         </div>
       ) : (
@@ -506,12 +509,12 @@ export function TaskList() {
                     />
                   </div>
                 </th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 max-w-md">任务名称</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">状态</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">类型</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">模型</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">创建时间</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">操作</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 max-w-md">{t("tasks.colName")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colStatus")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colType")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colModel")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colCreated")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colActions")}</th>
               </tr>
             </thead>
             <tbody className="px-4">
@@ -533,7 +536,7 @@ export function TaskList() {
       {/* Selection toolbar — fixed at bottom */}
       {selectedCount > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white border border-gray-200 shadow-xl rounded-xl px-5 py-3">
-          <span className="text-sm text-gray-700 font-medium">已选择 {selectedCount} 项</span>
+          <span className="text-sm text-gray-700 font-medium">{t("tasks.selected", { count: selectedCount })}</span>
           <div className="w-px h-5 bg-gray-200" />
           <button
             onClick={handleBatchDownload}
@@ -541,7 +544,7 @@ export function TaskList() {
             className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
           >
             {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            下载 Markdown
+            {t("tasks.downloadMarkdown")}
           </button>
           <button
             onClick={requestBatchDelete}
@@ -549,7 +552,7 @@ export function TaskList() {
             className="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
           >
             <Trash2 className="h-4 w-4" />
-            删除
+            {t("tasks.delete")}
           </button>
           <div className="w-px h-5 bg-gray-200" />
           <button
@@ -557,7 +560,7 @@ export function TaskList() {
             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <X className="h-4 w-4" />
-            取消
+            {t("tasks.cancel")}
           </button>
         </div>
       )}
@@ -607,9 +610,9 @@ export function TaskList() {
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900">导出成功</p>
+              <p className="text-sm font-medium text-gray-900">{t("tasks.exportSuccess")}</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                已成功导出 {downloadNotice.count} 个任务的 Markdown 文件
+                {t("tasks.exportDesc", { count: downloadNotice.count })}
               </p>
               <a
                 href={downloadNotice.url}
@@ -617,7 +620,7 @@ export function TaskList() {
                 className="inline-flex items-center gap-1 mt-2.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
               >
                 <Download className="h-4 w-4" />
-                立即下载
+                {t("tasks.downloadNow")}
               </a>
             </div>
             <button
@@ -639,11 +642,11 @@ export function TaskList() {
               <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center mb-3">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
               </div>
-              <h3 className="text-base font-medium text-gray-900 mb-1">是否删除该任务？</h3>
+              <h3 className="text-base font-medium text-gray-900 mb-1">{t("tasks.deleteTitle")}</h3>
               <p className="text-sm text-gray-500 truncate w-full">
                 {deleteConfirm.ids.length === 1
-                  ? `即将删除「${deleteConfirm.label}」，此操作不可恢复`
-                  : `即将删除${deleteConfirm.label}，此操作不可恢复`}
+                  ? t("tasks.deleteSingle", { label: deleteConfirm.label })
+                  : t("tasks.deleteMultiple", { label: deleteConfirm.label })}
               </p>
             </div>
             <div className="flex items-center gap-3 mt-5">
@@ -651,13 +654,13 @@ export function TaskList() {
                 onClick={() => setDeleteConfirm(null)}
                 className="flex-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg transition-colors font-medium"
               >
-                取消
+                {t("tasks.cancel")}
               </button>
               <button
                 onClick={confirmDelete}
                 className="flex-1 text-sm text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition-colors font-medium"
               >
-                确定
+                {t("tasks.confirm")}
               </button>
             </div>
           </div>

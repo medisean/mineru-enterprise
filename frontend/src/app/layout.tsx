@@ -6,8 +6,11 @@ import { Providers } from "@/components/ui/providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: process.env.NEXT_PUBLIC_APP_NAME || "MinerU Enterprise",
-  description: "Enterprise document parsing platform powered by MinerU",
+  title: process.env.NEXT_PUBLIC_APP_NAME || "MinerU",
+  description: "Document parsing platform powered by MinerU",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
