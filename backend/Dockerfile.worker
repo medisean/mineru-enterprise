@@ -1,4 +1,4 @@
-# MinerU worker image — includes full MinerU model dependencies + LibreOffice for Office→PDF preview
+# MinerU worker image — includes full MinerU model dependencies + LibreOffice for Office->PDF preview
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -29,17 +29,31 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt requirements-worker.txt ./
 RUN pip install --no-cache-dir -r requirements-worker.txt
 
-# Pre-download MinerU pipeline models during build.
-# First run otherwise takes 3-5 min to download from HuggingFace/ModelScope.
-# Models are cached in ~/.cache/huggingface/hub/
+# ── Pre-download all MinerU models during build ──────────────────────────────
+# Use HF_ENDPOINT=hf-mirror.com for faster downloads in China.
+# Downloads both pipeline models (PDF-Extract-Kit) and VLM models (MinerU2.5-Pro)
+# so that first-run doesn't hang on model downloads.
+ARG HF_ENDPOINT=https://hf-mirror.com
+
+# 1) Pipeline models (used by --backend pipeline and hybrid backends)
+#    MineruPipelineModel init needs formula_config, so we use snapshot_download directly.
 RUN python -c "\
 import os; \
 os.environ['MINERU_DEVICE']='cpu'; \
-from mineru.backend.pipeline.model_init import MineruPipelineModel; \
-model = MineruPipelineModel(device='cpu', lang='ch'); \
-print('MinerU pipeline models pre-downloaded OK')" \
-|| echo "WARN: model pre-download failed, will download on first run"
+from huggingface_hub import snapshot_download; \
+path = snapshot_download('opendatalab/PDF-Extract-Kit-1.0', max_workers=2); \
+print(f'Pipeline model pre-downloaded to: {path}')" \
+|| echo "WARN: pipeline model pre-download failed, will download on first run"
+
+# 2) VLM models (used by --backend hybrid-auto-engine / vlm-auto-engine)
+RUN python -c "\
+import os; \
+os.environ['MINERU_DEVICE']='cpu'; \
+from huggingface_hub import snapshot_download; \
+path = snapshot_download('opendatalab/MinerU2.5-Pro-2604-1.2B', max_workers=2); \
+print(f'VLM model pre-downloaded to: {path}')" \
+|| echo "WARN: VLM model pre-download failed, will download on first run"
 
 COPY . .
 
-CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse", "-c", "2", "--loglevel=info"]
+CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse_cpu", "-c", "2", "--loglevel=info"]

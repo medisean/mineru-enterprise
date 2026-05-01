@@ -103,7 +103,7 @@ class ParseTask(Base):
     output_format: Mapped[str] = mapped_column(String(32), default="markdown")
 
     # Parse config
-    backend: Mapped[str] = mapped_column(String(64), default="pipeline")
+    backend: Mapped[str] = mapped_column(String(64), default="")
     output_format: Mapped[str] = mapped_column(String(32), default="markdown")
     language: Mapped[str] = mapped_column(String(16), default="ch")
     is_ocr: Mapped[bool] = mapped_column(Boolean, default=False)

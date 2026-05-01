@@ -100,6 +100,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cpu"
+      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +110,7 @@ services:
       - ./backend:/app
       - paddleocr_models:/root/.paddleocr
       - mineru_models:/root/.mineru
+      - huggingface_cache:/root/.cache/huggingface
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c 2 --loglevel=info
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
@@ -125,6 +127,7 @@ services:
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cuda"
       NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
+      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,6 +136,7 @@ services:
     volumes:
       - paddleocr_models:/root/.paddleocr
       - mineru_models:/root/.mineru
+      - huggingface_cache:/root/.cache/huggingface
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_gpu -c 2 --loglevel=info
     deploy:
       resources:
@@ -196,3 +200,4 @@ volumes:
   minio_data:
   paddleocr_models:
   mineru_models:
+  huggingface_cache:

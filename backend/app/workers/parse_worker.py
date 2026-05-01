@@ -103,7 +103,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             if device and device != "cpu":
                 cmd += ["--device", device]
 
-            # Backend model selection
+            # Backend model selection (omit if empty → MinerU uses its default hybrid-auto-engine)
             if backend:
                 cmd += ["--backend", backend]
 
@@ -165,6 +165,12 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 text=True,
                 timeout=3000,
             )
+
+            # Log MinerU output for debugging (especially image parsing issues)
+            if result.stdout:
+                logger.info("MinerU stdout", task_id=task_id, output=result.stdout[:3000])
+            if result.stderr:
+                logger.warning("MinerU stderr", task_id=task_id, output=result.stderr[:3000])
 
             if result.returncode != 0:
                 raise RuntimeError(f"MinerU error (exit {result.returncode}): {result.stderr[:2000]}")

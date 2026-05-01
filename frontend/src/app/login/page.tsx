@@ -105,7 +105,6 @@ export default function LoginPage() {
             <FileText className="h-6 w-6 text-white" />
           </div>
           <h1 className="text-2xl font-semibold text-gray-900">MinerU Enterprise</h1>
-          <p className="text-sm text-gray-500 mt-1">企业文档解析平台</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
@@ -249,9 +248,6 @@ export default function LoginPage() {
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-4">
-          MinerU Enterprise v1.0 · 企业文档解析平台
-        </p>
       </div>
     </div>
   );

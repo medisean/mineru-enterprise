@@ -4,5 +4,8 @@
 # MinerU (latest v3 series) — include [pipeline] extra for torch/transformers/albumentations etc.
 mineru[pipeline]>=3.0.0
 
+# Required by hybrid-auto-engine / vlm-auto-engine backends (device_map needs accelerate)
+accelerate>=1.0.0
+
 # Flower for monitoring
 flower==2.0.1

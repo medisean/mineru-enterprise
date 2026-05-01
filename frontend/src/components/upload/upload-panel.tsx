@@ -72,8 +72,8 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Parse config
-  const [backend, setBackend] = useState("pipeline");
+  // Parse config — backend defaults to empty (MinerU v3 uses hybrid-auto-engine by default)
+  const [backend, setBackend] = useState("");
   const [outputFormat, setOutputFormat] = useState("markdown");
   const [language, setLanguage] = useState("ch");
   const [isOcr, setIsOcr] = useState<boolean | null>(null); // null = auto
@@ -128,7 +128,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
         s3_key,
         original_filename: item.file.name,
         file_size_bytes: item.file.size,
-        backend,
+        backend: backend || undefined,
         output_format: outputFormat,
         language,
         is_ocr: isOcr,
@@ -217,9 +217,10 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
             onChange={(e) => setBackend(e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
           >
-            <option value="pipeline">Pipeline（CPU 兼容）</option>
-            <option value="vlm">VLM（GPU，高精度）</option>
-            <option value="MinerU-HTML">MinerU-HTML（网页解析）</option>
+            <option value="">自动（推荐）</option>
+            <option value="pipeline">Pipeline（传统管道）</option>
+            <option value="hybrid-auto-engine">Hybrid（混合引擎）</option>
+            <option value="vlm-auto-engine">VLM（视觉语言模型）</option>
           </select>
         </div>
       </div>

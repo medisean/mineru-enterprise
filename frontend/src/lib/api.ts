@@ -90,7 +90,7 @@ export const tasksApi: Record<string, Function> = {
     backend?: string;
     output_format?: string;
   }[]) => apiClient.post("/tasks/batch/tasks", tasks),
-  list: (params?: { page?: number; page_size?: number; status?: string }) =>
+  list: (params?: { page?: number; page_size?: number; status?: string; keyword?: string }) =>
     apiClient.get("/tasks/", { params }),
   get: (id: string) => apiClient.get(`/tasks/${id}`),
   getResults: (id: string) => apiClient.get(`/tasks/${id}/results`),

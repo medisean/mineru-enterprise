@@ -134,6 +134,20 @@ export default function TaskDetailPage() {
   const sourceFileUrl = sourceUrlData?.download_url;
   const previewType = sourceUrlData?.preview_type;
 
+  const handleDownloadAll = () => {
+    if (!results?.files?.length) return;
+    for (const file of results.files) {
+      const a = document.createElement("a");
+      a.href = file.download_url;
+      a.download = file.filename;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
   const copyContent = async () => {
     const text = preview?.markdown_content || preview?.content;
     if (text) {
@@ -185,7 +199,7 @@ export default function TaskDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-[calc(100vh)] bg-gray-50">
         <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
       </div>
     );
@@ -193,7 +207,7 @@ export default function TaskDetailPage() {
 
   if (isError || !task) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-[calc(100vh)] bg-gray-50">
         <div className="text-center">
           <AlertCircle className="mx-auto h-8 w-8 text-red-400 mb-3" />
           <p className="text-sm text-red-500">任务不存在或加载失败</p>
@@ -210,7 +224,7 @@ export default function TaskDetailPage() {
   // Non-success states: compact card view
   if (task.status !== "success") {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="h-screen bg-gray-50">
         <main className="max-w-3xl mx-auto p-8">
           <button
             onClick={() => router.push("/dashboard?tab=tasks")}
@@ -221,18 +235,18 @@ export default function TaskDetailPage() {
           </button>
 
           <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <FileText className="h-8 w-8 text-gray-300" />
-                <div>
-                  <h1 className="text-base font-medium text-gray-900">{task.original_filename}</h1>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <FileText className="h-8 w-8 text-gray-300 flex-shrink-0" />
+                <div className="min-w-0 overflow-hidden">
+                  <h1 className="text-base font-medium text-gray-900 truncate" title={task.original_filename}>{task.original_filename}</h1>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB
                     {task.completed_at && ` · 耗时 ${formatDistanceToNow(new Date(task.started_at || task.created_at), { locale: zhCN })}`}
                   </p>
                 </div>
               </div>
-              <span className={`text-xs px-2.5 py-1 rounded-full ${statusCfg.color}`}>
+              <span className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${statusCfg.color}`}>
                 {task.status === "processing" && <Loader2 className="h-3 w-3 animate-spin inline mr-1" />}
                 {statusCfg.label}
               </span>
@@ -284,30 +298,28 @@ export default function TaskDetailPage() {
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Top bar */}
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
             onClick={() => router.push("/dashboard?tab=tasks")}
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
-            返回
+            任务列表
           </button>
-          <div className="w-px h-4 bg-gray-200" />
-          <FileText className="h-4 w-4 text-gray-400" />
-          <span className="text-sm font-medium text-gray-900 truncate max-w-[300px]">{task.original_filename}</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${statusCfg.color}`}>{statusCfg.label}</span>
+          <div className="w-px h-4 bg-gray-200 flex-shrink-0" />
+          <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          <span className="text-sm font-medium text-gray-900 truncate" title={task.original_filename}>{task.original_filename}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${statusCfg.color}`}>{statusCfg.label}</span>
         </div>
         <div className="flex items-center gap-2">
           {results?.files?.length > 0 && (
-            <a
-              href={results.files[0].download_url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleDownloadAll}
               className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
             >
               <Download className="h-3.5 w-3.5" />
-              下载全部
-            </a>
+              下载结果
+            </button>
           )}
         </div>
       </div>
@@ -354,11 +366,11 @@ export default function TaskDetailPage() {
               </div>
             ) : sourceIsOffice && originFileUrl && previewType !== "pdf" ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-20 w-full">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-sm w-full">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-sm w-full overflow-hidden">
                   <div className="w-16 h-16 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-4">
                     <FileSpreadsheet className="h-8 w-8 text-blue-500" />
                   </div>
-                  <p className="text-sm font-medium text-gray-700 mb-1">{task.original_filename}</p>
+                  <p className="text-sm font-medium text-gray-700 mb-1 truncate" title={task.original_filename}>{task.original_filename}</p>
                   <p className="text-xs text-gray-400 mb-4">
                     {officeType} 文件 · {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB
                   </p>
@@ -375,9 +387,9 @@ export default function TaskDetailPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center py-20">
+              <div className="flex flex-col items-center justify-center h-full text-center py-20 px-8 overflow-hidden">
                 <FileText className="h-16 w-16 text-gray-200 mb-4" />
-                <p className="text-sm text-gray-400 mb-1">{task.original_filename}</p>
+                <p className="text-sm text-gray-400 mb-1 truncate w-full" title={task.original_filename}>{task.original_filename}</p>
                 <p className="text-xs text-gray-300">
                   {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB · {task.backend} · {task.language}
                 </p>

@@ -77,7 +77,7 @@ class CreateTaskRequest(BaseModel):
     s3_key: str
     original_filename: str
     file_size_bytes: int
-    backend: Optional[str] = "pipeline"    # pipeline | vlm | MinerU-HTML
+    backend: Optional[str] = ""    # pipeline | hybrid-auto-engine | vlm-auto-engine | empty=MinerU default
     output_format: Optional[str] = "markdown"   # markdown | json | both | docx | html | latex
     language: Optional[str] = "ch"         # ch | en | japan | korean | ch_server | ...
     is_ocr: Optional[bool] = None          # None = auto-detect
@@ -158,7 +158,7 @@ class MinerUResponse(BaseModel):
 class ExtractTaskRequest(BaseModel):
     """POST /api/v4/extract/task — create parse task by file URL"""
     url: str
-    model_version: Optional[str] = "pipeline"       # pipeline | vlm | MinerU-HTML
+    model_version: Optional[str] = ""       # pipeline | hybrid-auto-engine | vlm-auto-engine | empty=default
     is_ocr: Optional[bool] = False
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True
@@ -211,7 +211,7 @@ class BatchFileUrlsRequest(BaseModel):
     callback: Optional[str] = None
     seed: Optional[str] = None
     extra_formats: Optional[List[str]] = None
-    model_version: Optional[str] = "pipeline"
+    model_version: Optional[str] = ""
 
 
 class BatchFileUrlsData(BaseModel):
@@ -238,7 +238,7 @@ class BatchUrlExtractRequest(BaseModel):
     callback: Optional[str] = None
     seed: Optional[str] = None
     extra_formats: Optional[List[str]] = None
-    model_version: Optional[str] = "pipeline"
+    model_version: Optional[str] = ""
     no_cache: Optional[bool] = False
     cache_tolerance: Optional[int] = 900
 

@@ -1,9 +1,13 @@
 """
 File upload & parse task endpoints.
 """
+import io
 import uuid
+import zipfile
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -94,12 +98,15 @@ async def list_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: str = Query(None),
+    keyword: str = Query(None, description="搜索文件名"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     q = select(ParseTask).where(ParseTask.user_id == current_user.id)
     if status:
         q = q.where(ParseTask.status == TaskStatus(status))
+    if keyword:
+        q = q.where(ParseTask.original_filename.ilike(f"%{keyword}%"))
 
     count_q = select(func.count()).select_from(q.subquery())
     total = (await db.execute(count_q)).scalar()
@@ -195,6 +202,85 @@ async def get_task_results(
     return TaskResultResponse(task_id=task_id, status=task.status.value, files=files)
 
 
+# ── Batch download as ZIP ────────────────────────────────────────────────────
+class BatchDownloadRequest(BaseModel):
+    task_ids: List[str]
+
+
+@router.post("/batch/download")
+async def batch_download(
+    payload: BatchDownloadRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Download parsed Markdown files from multiple tasks as a ZIP archive.
+    Returns a presigned URL for the generated ZIP file.
+    """
+    if not payload.task_ids:
+        raise HTTPException(status_code=400, detail="No task IDs provided")
+
+    # Fetch all requested tasks belonging to the user
+    result = await db.execute(
+        select(ParseTask).where(
+            ParseTask.id.in_(payload.task_ids),
+            ParseTask.user_id == current_user.id,
+            ParseTask.status == TaskStatus.SUCCESS,
+        )
+    )
+    tasks = result.scalars().all()
+
+    if not tasks:
+        raise HTTPException(status_code=400, detail="No completed tasks found")
+
+    # Build ZIP in memory
+    zip_buffer = io.BytesIO()
+    filename_counter: dict[str, int] = {}
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for task in tasks:
+            objects = storage_service.list_objects(task.output_s3_prefix)
+            # Find markdown file(s)
+            md_files = [obj for obj in objects if obj["key"].endswith(".md")]
+            # If no .md, take the first file
+            target_files = md_files if md_files else (objects[:1] if objects else [])
+
+            for obj in target_files:
+                original_name = obj["key"].split("/")[-1]
+                # Build a friendly filename: <task_filename_base>/<original_name>
+                base_name = task.original_filename.rsplit(".", 1)[0] if "." in task.original_filename else task.original_filename
+
+                # Handle duplicate folder names
+                if base_name in filename_counter:
+                    filename_counter[base_name] += 1
+                    base_name = f"{base_name}_{filename_counter[base_name]}"
+                else:
+                    filename_counter[base_name] = 0
+
+                arcname = f"{base_name}/{original_name}"
+                content = storage_service.download_bytes(obj["key"])
+                zf.writestr(arcname, content)
+
+    zip_buffer.seek(0)
+    zip_data = zip_buffer.read()
+
+    # Upload ZIP to S3
+    zip_filename = f"MinerU_Batch_Export_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
+    zip_key = f"downloads/{current_user.id}/{uuid.uuid4()}/{zip_filename}"
+    storage_service.upload_bytes(zip_key, zip_data, content_type="application/zip")
+
+    # Generate presigned download URL (15 min expiry)
+    download_url = storage_service.generate_download_presigned_url(
+        zip_key, expires=900, filename=zip_filename
+    )
+
+    return {
+        "download_url": download_url,
+        "task_count": len(tasks),
+        "zip_size": len(zip_data),
+    }
+
+
 # ── Retry a failed/cancelled task ─────────────────────────────────────────
 @router.post("/{task_id}/retry", response_model=TaskOut)
 async def retry_task(
@@ -246,7 +332,7 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a task. Cancels if running, then removes from DB and S3."""
+    """Delete a task. Cancels if running, then removes from DB. S3 files are kept."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -259,23 +345,7 @@ async def delete_task(
         except Exception:
             pass
 
-    # Clean up S3 objects
-    if task.output_s3_prefix:
-        try:
-            objects = storage_service.list_objects(task.output_s3_prefix)
-            for obj in objects:
-                storage_service.delete_object(obj["key"])
-        except Exception:
-            pass
-
-    # Delete uploaded source file
-    if task.input_s3_key:
-        try:
-            storage_service.delete_object(task.input_s3_key)
-        except Exception:
-            pass
-
-    # Remove from DB
+    # Remove from DB (S3 files are kept intentionally)
     await db.delete(task)
     await db.commit()
     return {"message": "Task deleted"}

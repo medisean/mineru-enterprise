@@ -34,22 +34,29 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
 COPY requirements.txt requirements-worker.txt ./
 RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements-worker.txt
 
-# Pre-download MinerU pipeline models during build.
-# Uses CUDA device if available at build time, falls back to CPU.
+# ── Pre-download all MinerU models during build ──────────────────────────────
+# Use HF_ENDPOINT=hf-mirror.com for faster downloads in China.
+ARG HF_ENDPOINT=https://hf-mirror.com
+
+# 1) Pipeline models (used by --backend pipeline and hybrid backends)
+#    MineruPipelineModel init needs formula_config, so we use snapshot_download directly.
 RUN python3 -c "\
 import os; \
-os.environ['MINERU_DEVICE']='cuda'; \
-from mineru.backend.pipeline.model_init import MineruPipelineModel; \
-model = MineruPipelineModel(device='cuda', lang='ch'); \
-print('MinerU pipeline models pre-downloaded OK (GPU)')" \
-|| python3 -c "\
+os.environ['MINERU_DEVICE']='cpu'; \
+from huggingface_hub import snapshot_download; \
+path = snapshot_download('opendatalab/PDF-Extract-Kit-1.0', max_workers=2); \
+print(f'Pipeline model pre-downloaded to: {path}')" \
+|| echo "WARN: pipeline model pre-download failed, will download on first run"
+
+# 2) VLM models (used by --backend hybrid-auto-engine / vlm-auto-engine)
+RUN python3 -c "\
 import os; \
 os.environ['MINERU_DEVICE']='cpu'; \
-from mineru.backend.pipeline.model_init import MineruPipelineModel; \
-model = MineruPipelineModel(device='cpu', lang='ch'); \
-print('MinerU pipeline models pre-downloaded OK (CPU fallback)')" \
-|| echo "WARN: model pre-download failed, will download on first run"
+from huggingface_hub import snapshot_download; \
+path = snapshot_download('opendatalab/MinerU2.5-Pro-2604-1.2B', max_workers=2); \
+print(f'VLM model pre-downloaded to: {path}')" \
+|| echo "WARN: VLM model pre-download failed, will download on first run"
 
 COPY . .
 
-CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse", "-c", "2", "--loglevel=info"]
+CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse_gpu", "-c", "2", "--loglevel=info"]

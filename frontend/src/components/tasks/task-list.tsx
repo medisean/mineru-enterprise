@@ -1,19 +1,18 @@
 "use client";
 /**
- * Task list component with real-time WebSocket progress updates,
- * pagination, and status filtering.
+ * Task list — table layout with selection, search, status filter, batch download, pagination.
  */
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { tasksApi } from "@/lib/api";
 import { apiClient } from "@/lib/api";
 import {
-  CheckCircle2, XCircle, Clock, Loader2, Download, FileText,
-  ChevronLeft, ChevronRight, Filter, RotateCcw, Trash2,
+  CheckCircle2, XCircle, Clock, Loader2, FileText,
+  FileSpreadsheet, FileImage, File, FileCode, FileArchive,
+  ChevronLeft, ChevronRight, ChevronDown, Search, RotateCcw, Trash2,
+  Download, X, AlertTriangle,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { zhCN } from "date-fns/locale";
+import { format } from "date-fns";
 
 interface Task {
   id: string;
@@ -33,11 +32,11 @@ interface Task {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  pending: { label: "等待中", color: "text-yellow-600 bg-yellow-50", icon: <Clock className="h-4 w-4" /> },
-  processing: { label: "解析中", color: "text-blue-600 bg-blue-50", icon: <Loader2 className="h-4 w-4 animate-spin" /> },
-  success: { label: "完成", color: "text-green-600 bg-green-50", icon: <CheckCircle2 className="h-4 w-4" /> },
-  failed: { label: "失败", color: "text-red-600 bg-red-50", icon: <XCircle className="h-4 w-4" /> },
-  cancelled: { label: "已取消", color: "text-gray-500 bg-gray-50", icon: <XCircle className="h-4 w-4" /> },
+  pending: { label: "等待中", color: "text-yellow-500", icon: <Clock className="h-4 w-4" /> },
+  processing: { label: "解析中", color: "text-blue-500", icon: <Loader2 className="h-4 w-4 animate-spin" /> },
+  success: { label: "解析成功", color: "text-green-500", icon: <CheckCircle2 className="h-4 w-4" /> },
+  failed: { label: "解析失败", color: "text-red-500", icon: <XCircle className="h-4 w-4" /> },
+  cancelled: { label: "已取消", color: "text-gray-400", icon: <XCircle className="h-4 w-4" /> },
 };
 
 const STATUS_FILTERS = [
@@ -48,25 +47,84 @@ const STATUS_FILTERS = [
   { value: "failed", label: "失败" },
 ];
 
-const FILE_ICONS: Record<string, string> = {
-  pdf: "text-red-400",
-  doc: "text-blue-400",
-  docx: "text-blue-400",
-  ppt: "text-orange-400",
-  pptx: "text-orange-400",
-  xlsx: "text-green-400",
-  png: "text-purple-400",
-  jpg: "text-purple-400",
-  jpeg: "text-purple-400",
-  html: "text-cyan-400",
+const FILE_TYPE_MAP: Record<string, { icon: React.ElementType; color: string }> = {
+  pdf:  { icon: FileText, color: "text-red-500" },
+  doc:  { icon: FileText, color: "text-blue-500" },
+  docx: { icon: FileText, color: "text-blue-500" },
+  ppt:  { icon: File, color: "text-orange-500" },
+  pptx: { icon: File, color: "text-orange-500" },
+  xls:  { icon: FileSpreadsheet, color: "text-green-600" },
+  xlsx: { icon: FileSpreadsheet, color: "text-green-600" },
+  csv:  { icon: FileSpreadsheet, color: "text-green-600" },
+  png:  { icon: FileImage, color: "text-purple-500" },
+  jpg:  { icon: FileImage, color: "text-purple-500" },
+  jpeg: { icon: FileImage, color: "text-purple-500" },
+  gif:  { icon: FileImage, color: "text-purple-500" },
+  bmp:  { icon: FileImage, color: "text-purple-500" },
+  svg:  { icon: FileImage, color: "text-purple-500" },
+  webp: { icon: FileImage, color: "text-purple-500" },
+  html: { icon: FileCode, color: "text-cyan-500" },
+  htm:  { icon: FileCode, color: "text-cyan-500" },
+  zip:  { icon: FileArchive, color: "text-yellow-600" },
+  rar:  { icon: FileArchive, color: "text-yellow-600" },
+  "7z": { icon: FileArchive, color: "text-yellow-600" },
+  tar:  { icon: FileArchive, color: "text-yellow-600" },
+  gz:   { icon: FileArchive, color: "text-yellow-600" },
+  md:   { icon: FileText, color: "text-gray-500" },
+  txt:  { icon: FileText, color: "text-gray-500" },
 };
 
-function getFileIconColor(filename: string): string {
+function getFileTypeInfo(filename: string): { icon: React.ElementType; color: string } {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
-  return FILE_ICONS[ext] || "text-gray-400";
+  return FILE_TYPE_MAP[ext] || { icon: FileText, color: "text-gray-400" };
 }
 
-function TaskRow({ task }: { task: Task }) {
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1024 / 1024).toFixed(1) + " MB";
+}
+
+function getExt(filename: string): string {
+  return filename.split(".").pop()?.toUpperCase() || "";
+}
+
+const BACKEND_LABELS: Record<string, string> = {
+  pipeline: "Pipeline",
+  vlm: "VLM",
+  "MinerU-HTML": "MinerU-HTML",
+};
+
+function getBackendLabel(backend: string): string {
+  return BACKEND_LABELS[backend] || backend;
+}
+
+/** Build page number array with ellipsis */
+function buildPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "...")[] = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) pages.push("...");
+  for (let i = left; i <= right; i++) pages.push(i);
+  if (right < total - 1) pages.push("...");
+  pages.push(total);
+  return pages;
+}
+
+function TaskRow({
+  task,
+  selected,
+  onToggleSelect,
+  anySelected,
+  onDeleteRequest,
+}: {
+  task: Task;
+  selected: boolean;
+  onToggleSelect: () => void;
+  anySelected: boolean;
+  onDeleteRequest: (id: string, label: string) => void;
+}) {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -110,114 +168,138 @@ function TaskRow({ task }: { task: Task }) {
       await apiClient.post(`/tasks/${task.id}/retry`);
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
     } catch {
-      // silently fail — user can go to detail page for more info
+      // silent
     } finally {
       setRetrying(false);
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent) => {
+  const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (deleting) return;
-    if (!confirm(`确定删除任务「${task.original_filename}」？此操作不可恢复。`)) return;
-    setDeleting(true);
-    try {
-      await apiClient.delete(`/tasks/${task.id}`);
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-    } catch {
-      alert("删除失败，请稍后重试");
-    } finally {
-      setDeleting(false);
-    }
+    onDeleteRequest(task.id, task.original_filename);
   };
 
   const statusCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
-  const fileSizeMB = (task.file_size_bytes / 1024 / 1024).toFixed(1);
-  const iconColor = getFileIconColor(task.original_filename);
+  const { icon: FileIcon, color: iconColor } = getFileTypeInfo(task.original_filename);
 
   return (
-    <div className="flex items-center gap-4 p-4 bg-white border border-gray-100 rounded-xl hover:border-gray-200 transition-colors group">
-      <FileText className={`h-8 w-8 flex-shrink-0 ${iconColor}`} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <p className="text-sm font-medium truncate">{task.original_filename}</p>
-          <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${statusCfg.color}`}>
-            {statusCfg.icon}
-            {statusCfg.label}
-          </span>
+    <tr
+      className={`group border-b border-gray-50 transition-colors cursor-pointer ${
+        selected ? "bg-blue-50/60" : "hover:bg-gray-50/50"
+      }`}
+      onClick={() => { window.location.href = `/dashboard/tasks/${task.id}`; }}
+    >
+      {/* Checkbox — hidden by default, shown when any selected or on hover */}
+      <td className="py-4 pl-5 pr-3 w-10" onClick={(e) => e.stopPropagation()}>
+        <div className={`flex items-center justify-center transition-opacity ${anySelected || selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-blue-600"
+          />
         </div>
-        <p className="text-xs text-gray-400">
-          {fileSizeMB} MB · {task.backend}
-          {task.is_ocr && " · OCR"}
-          {!task.enable_formula && " · 无公式"}
-          {!task.enable_table && " · 无表格"}
-          {" · "}
-          {formatDistanceToNow(new Date(task.created_at), { addSuffix: true, locale: zhCN })}
-        </p>
+      </td>
+      {/* Name + size */}
+      <td className="py-4 pr-5 max-w-md">
+        <div className="flex items-center gap-3 min-w-0">
+          <FileIcon className={`h-5 w-5 flex-shrink-0 ${iconColor}`} />
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <p className="text-sm text-gray-800 truncate" title={task.original_filename}>{task.original_filename}</p>
+            <p className="text-xs text-gray-400">{formatFileSize(task.file_size_bytes)}</p>
+          </div>
+        </div>
+      </td>
+      {/* Status */}
+      <td className="py-4 pr-5">
+        <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
+          <span className={statusCfg.color}>{statusCfg.icon}</span>
+          {statusCfg.label}
+        </span>
         {task.status === "processing" && (
-          <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden w-20">
             <div
-              className="h-full bg-blue-500 rounded-full transition-all duration-500"
+              className="h-full bg-blue-400 rounded-full transition-all duration-500"
               style={{ width: `${task.progress}%` }}
             />
           </div>
         )}
-        {task.error_message && (
-          <p className="text-xs text-red-500 mt-0.5 truncate">{task.error_message}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {task.status === "success" && (
-          <Link
-            href={`/dashboard/tasks/${task.id}`}
-            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />
-            查看结果
-          </Link>
-        )}
-        {task.status === "failed" && (
+      </td>
+      {/* Type */}
+      <td className="py-4 pr-5">
+        <span className="text-sm text-gray-500">{getExt(task.original_filename)}</span>
+      </td>
+      {/* Model */}
+      <td className="py-4 pr-5">
+        <span className="text-sm text-gray-500">{getBackendLabel(task.backend)}</span>
+      </td>
+      {/* Created */}
+      <td className="py-4 pr-5">
+        <span className="text-sm text-gray-400 whitespace-nowrap">
+          {format(new Date(task.created_at), "MM-dd HH:mm")}
+        </span>
+      </td>
+      {/* Actions */}
+      <td className="py-4 pr-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1">
+          {task.status === "failed" && (
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+            >
+              {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              重试
+            </button>
+          )}
           <button
-            onClick={handleRetry}
-            disabled={retrying}
-            className="flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="inline-flex items-center text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors disabled:opacity-50"
+            title="删除"
           >
-            {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-            {retrying ? "重试中" : "重试"}
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
           </button>
-        )}
-        {(task.status === "failed" || task.status === "cancelled") && (
-          <Link
-            href={`/dashboard/tasks/${task.id}`}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            详情
-          </Link>
-        )}
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 hover:bg-red-50 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-          title="删除"
-        >
-          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-    </div>
+        </div>
+      </td>
+    </tr>
   );
 }
 
 export function TaskList() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
-  const pageSize = 20;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<{ url: string; count: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; label: string } | null>(null);
+  const pageSize = 10;
+
+  // Debounce search: 500ms after user stops typing, apply the search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["tasks", page, statusFilter],
+    queryKey: ["tasks", page, statusFilter, debouncedSearch],
     queryFn: () =>
       tasksApi
-        .list({ page, page_size: pageSize, status: statusFilter || undefined })
+        .list({
+          page,
+          page_size: pageSize,
+          status: statusFilter || undefined,
+          keyword: debouncedSearch || undefined,
+        })
         .then((r: { data: { items: Task[]; total: number } }) => r.data),
     refetchInterval: (query) => {
       const items = query.state.data?.items;
@@ -228,8 +310,109 @@ export function TaskList() {
     },
   });
 
+  // Clear selection when page/filter changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, statusFilter, debouncedSearch]);
+
+  const items = data?.items ?? [];
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
-  const isEmpty = !data?.items?.length;
+  const isEmpty = !items.length;
+
+  const currentStatusLabel = STATUS_FILTERS.find(f => f.value === statusFilter)?.label || "全部状态";
+
+  // Selection helpers
+  const allSelected = items.length > 0 && items.every((t: Task) => selectedIds.has(t.id));
+  const someSelected = items.some((t: Task) => selectedIds.has(t.id)) && !allSelected;
+  const selectedCount = selectedIds.size;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((t: Task) => t.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Batch download markdown
+  const handleBatchDownload = async () => {
+    const successTasks = items.filter((t: Task) => t.status === "success" && selectedIds.has(t.id));
+    if (!successTasks.length) {
+      alert("请选择已完成的任务进行下载");
+      return;
+    }
+    setDownloading(true);
+    try {
+      if (successTasks.length === 1) {
+        // Single file: download .md directly
+        const res = await apiClient.get(`/tasks/${successTasks[0].id}/results`);
+        const files = res.data?.files ?? [];
+        const mdFile = files.find((f: { filename: string }) => f.filename.endsWith(".md"));
+        const targetFile = mdFile || files[0];
+        if (targetFile?.download_url) {
+          const a = document.createElement("a");
+          a.href = targetFile.download_url;
+          a.download = targetFile.filename;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      } else {
+        // Multiple files: ZIP via batch download API
+        const res = await apiClient.post("/tasks/batch/download", {
+          task_ids: successTasks.map((t: Task) => t.id),
+        });
+        const { download_url, task_count } = res.data;
+        setDownloadNotice({ url: download_url, count: task_count });
+        setTimeout(() => setDownloadNotice(null), 15000);
+      }
+    } catch {
+      alert("下载失败，请稍后重试");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Request batch delete (show confirm modal)
+  const requestBatchDelete = () => {
+    setDeleteConfirm({
+      ids: Array.from(selectedIds),
+      label: `选中的 ${selectedCount} 个任务`,
+    });
+  };
+
+  // Execute delete after confirm
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const ids = deleteConfirm.ids;
+    setDeleteConfirm(null);
+    setDownloading(true);
+    try {
+      for (const id of ids) {
+        await apiClient.delete(`/tasks/${id}`);
+      }
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+    } catch {
+      alert("部分任务删除失败，请稍后重试");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (isLoading && !data) {
     return (
@@ -247,67 +430,237 @@ export function TaskList() {
 
   return (
     <div className="space-y-4">
-      {/* Filter bar — always visible */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-gray-400" />
-        <div className="flex gap-1">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => { setStatusFilter(f.value); setPage(1); }}
-              className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
-                statusFilter === f.value
-                  ? "bg-blue-100 text-blue-700 font-medium"
-                  : "text-gray-500 hover:bg-gray-100"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+      {/* Title + Search & Filter bar */}
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">全部任务</h2>
+
+        {/* Search input */}
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="搜索文件名..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors bg-white"
+          />
         </div>
+
+        {/* Status dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className="inline-flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors bg-white"
+          >
+            {currentStatusLabel}
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${dropdownOpen ? "rotate-180" : ""}`} />
+          </button>
+          {dropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
+              <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+                {STATUS_FILTERS.map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => { setStatusFilter(f.value); setPage(1); setDropdownOpen(false); }}
+                    className={`w-full text-left text-sm px-3 py-1.5 hover:bg-gray-50 transition-colors ${
+                      statusFilter === f.value ? "text-blue-600 font-medium bg-blue-50" : "text-gray-600"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         <span className="text-xs text-gray-400 ml-auto">
           共 {data?.total ?? 0} 条
         </span>
       </div>
 
-      {/* Task list or empty state */}
+      {/* Table */}
       {isEmpty ? (
         <div className="text-center py-12">
           <FileText className="mx-auto h-10 w-10 text-gray-200 mb-3" />
           <p className="text-sm text-gray-400">
-            {statusFilter ? `没有"${STATUS_FILTERS.find(f => f.value === statusFilter)?.label}"状态的任务` : "暂无解析任务，上传文件开始解析"}
+            {statusFilter ? `没有"${STATUS_FILTERS.find(f => f.value === statusFilter)?.label}"状态的任务` : "暂无任务，上传文件开始解析"}
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {data.items.map((task: Task) => (
-            <TaskRow key={task.id} task={task} />
-          ))}
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left py-3 pl-5 pr-3 w-10">
+                  <div className={`flex items-center justify-center transition-opacity ${selectedCount > 0 ? "opacity-100" : "opacity-0"}`}>
+                    <input
+                      type="checkbox"
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </div>
+                </th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 max-w-md">任务名称</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">状态</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">类型</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">模型</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">创建时间</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">操作</th>
+              </tr>
+            </thead>
+            <tbody className="px-4">
+              {items.map((task: Task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  selected={selectedIds.has(task.id)}
+                  onToggleSelect={() => toggleSelect(task.id)}
+                  anySelected={selectedCount > 0}
+                  onDeleteRequest={(id, label) => setDeleteConfirm({ ids: [id], label })}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Selection toolbar — fixed at bottom */}
+      {selectedCount > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white border border-gray-200 shadow-xl rounded-xl px-5 py-3">
+          <span className="text-sm text-gray-700 font-medium">已选择 {selectedCount} 项</span>
+          <div className="w-px h-5 bg-gray-200" />
+          <button
+            onClick={handleBatchDownload}
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            下载 Markdown
+          </button>
+          <button
+            onClick={requestBatchDelete}
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            删除
+          </button>
+          <div className="w-px h-5 bg-gray-200" />
+          <button
+            onClick={clearSelection}
+            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <X className="h-4 w-4" />
+            取消
+          </button>
         </div>
       )}
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
+        <div className="flex items-center justify-center gap-1 pt-1">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
-            上一页
           </button>
-          <span className="text-xs text-gray-500">
-            {page} / {totalPages}
-          </span>
+          {buildPageNumbers(page, totalPages).map((p, i) =>
+            p === "..." ? (
+              <span key={`ellipsis-${i}`} className="text-xs text-gray-400 px-1">…</span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => setPage(p as number)}
+                className={`min-w-[28px] h-7 text-xs rounded-lg transition-colors ${
+                  page === p
+                    ? "bg-blue-600 text-white font-medium"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {p}
+              </button>
+            )
+          )}
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            下一页
             <ChevronRight className="h-3.5 w-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Download complete notice — bottom right, auto-dismiss 15s */}
+      {downloadNotice && (
+        <div className="fixed bottom-6 right-6 z-40 bg-white border border-gray-200 shadow-xl rounded-xl px-5 py-4 max-w-xs animate-in slide-in-from-right">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 bg-green-50 rounded-full flex items-center justify-center">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">导出成功</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                已成功导出 {downloadNotice.count} 个任务的 Markdown 文件
+              </p>
+              <a
+                href={downloadNotice.url}
+                download="export.zip"
+                className="inline-flex items-center gap-1 mt-2.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                立即下载
+              </a>
+            </div>
+            <button
+              onClick={() => setDownloadNotice(null)}
+              className="flex-shrink-0 text-gray-400 hover:text-gray-600 p-0.5 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-white rounded-xl shadow-xl px-6 py-5 max-w-sm w-full mx-4 overflow-hidden">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center mb-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
+              <h3 className="text-base font-medium text-gray-900 mb-1">是否删除该任务？</h3>
+              <p className="text-sm text-gray-500 truncate w-full">
+                {deleteConfirm.ids.length === 1
+                  ? `即将删除「${deleteConfirm.label}」，此操作不可恢复`
+                  : `即将删除${deleteConfirm.label}，此操作不可恢复`}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 mt-5">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg transition-colors font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 text-sm text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition-colors font-medium"
+              >
+                确定
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

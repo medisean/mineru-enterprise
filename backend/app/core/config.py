@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     S3_PRESIGN_EXPIRE_SECONDS: int = 3600
 
     # ── MinerU Engine ─────────────────────────────────────────────────────
-    MINERU_BACKEND: str = "pipeline"           # pipeline | vlm-transformers | vlm-sglang-engine
+    MINERU_BACKEND: str = ""                  # empty = MinerU default (hybrid-auto-engine in v3)
     MINERU_DEVICE: str = "cpu"                 # cpu | cuda | mps
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
 
