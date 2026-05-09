@@ -153,6 +153,38 @@ PUSH=true \
 bash scripts/build-images.sh all
 ```
 
+构建时可以按服务切换基础镜像和依赖源：
+
+```bash
+# API / Worker: Python 基础镜像、apt 源、pip 源
+PYTHON_BASE_IMAGE=registry.example.com/library/python:3.11-slim \
+APT_MIRROR=https://mirrors.aliyun.com/debian \
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+bash scripts/build-images.sh api
+
+# Web: Node 基础镜像、Alpine 源、npm 源
+NODE_BASE_IMAGE=registry.example.com/library/node:20-alpine \
+ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
+NPM_REGISTRY=https://registry.npmmirror.com \
+bash scripts/build-images.sh web
+
+# CPU Worker: PyTorch CPU wheel 源、MinerU 模型源
+PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu \
+MINERU_MODEL_DOWNLOAD_SOURCE=huggingface \
+HF_ENDPOINT=https://hf-mirror.com \
+bash scripts/build-images.sh worker
+
+# GPU Worker: CUDA 基础镜像、PyTorch CUDA wheel 源
+CUDA_BASE_IMAGE=registry.example.com/nvidia/cuda:12.4.1-runtime-ubuntu22.04 \
+PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 \
+bash scripts/build-images.sh worker-gpu
+
+# Nginx: Nginx 基础镜像、Alpine 源
+NGINX_BASE_IMAGE=registry.example.com/library/nginx:1.27-alpine \
+ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
+bash scripts/build-images.sh nginx
+```
+
 前端镜像会在构建时固化 `NEXT_PUBLIC_API_URL`：
 
 ```bash

@@ -2,15 +2,24 @@
 # Requires: nvidia-container-toolkit on the host
 # Usage:    docker compose --profile gpu up -d
 
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+ARG CUDA_BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM ${CUDA_BASE_IMAGE}
 
 # Prevent interactive prompts during apt install
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
+ARG APT_MIRROR=
+ARG PIP_INDEX_URL=
+ARG PIP_EXTRA_INDEX_URL=
+
 # System deps: build tools + runtime libs + LibreOffice + CJK fonts
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -n "$APT_MIRROR" ]; then \
+        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then sed -i "s|http://archive.ubuntu.com/ubuntu|${APT_MIRROR}|g; s|http://security.ubuntu.com/ubuntu|${APT_MIRROR}|g" /etc/apt/sources.list.d/ubuntu.sources; fi; \
+        if [ -f /etc/apt/sources.list ]; then sed -i "s|http://archive.ubuntu.com/ubuntu|${APT_MIRROR}|g; s|http://security.ubuntu.com/ubuntu|${APT_MIRROR}|g" /etc/apt/sources.list; fi; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ cmake libmagic1 libgl1 libglib2.0-0 \
     libldap2-dev libsasl2-dev \
     poppler-utils \
@@ -25,10 +34,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Install PyTorch with CUDA support ────────────────────────────────────
 ARG TORCH_VERSION=2.7.0
 ARG CUDA_VERSION=cu124
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/${CUDA_VERSION}
+RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
+    && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then python3 -m pip config set global.extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
+    && python3 -m pip install --no-cache-dir --break-system-packages \
     torch==${TORCH_VERSION} \
     torchvision \
-    --index-url https://download.pytorch.org/whl/${CUDA_VERSION}
+    --extra-index-url ${PYTORCH_INDEX_URL}
 
 # ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
 COPY requirements.txt requirements-worker.txt ./

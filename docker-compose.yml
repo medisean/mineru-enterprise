@@ -1,11 +1,21 @@
 x-backend-build: &backend-build
   context: ./backend
   dockerfile: Dockerfile
+  args:
+    PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
+    APT_MIRROR: ${APT_MIRROR:-}
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
 
 x-worker-build: &worker-build
   context: ./backend
   dockerfile: Dockerfile.worker
   args:
+    PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
+    APT_MIRROR: ${APT_MIRROR:-}
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
     REQUIRE_MINERU_MODELS: ${REQUIRE_MINERU_MODELS:-true}
@@ -15,6 +25,11 @@ x-worker-gpu-build: &worker-gpu-build
   context: ./backend
   dockerfile: Dockerfile.worker.gpu
   args:
+    CUDA_BASE_IMAGE: ${CUDA_BASE_IMAGE:-nvidia/cuda:12.4.1-runtime-ubuntu22.04}
+    APT_MIRROR: ${APT_MIRROR:-}
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/${CUDA_VERSION:-cu124}}
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     CUDA_VERSION: ${CUDA_VERSION:-cu124}
     HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
@@ -25,6 +40,9 @@ x-web-build: &web-build
   context: ./frontend
   dockerfile: Dockerfile
   args:
+    NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:20-alpine}
+    ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+    NPM_REGISTRY: ${NPM_REGISTRY:-}
     NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-MinerU Enterprise}
 
@@ -212,6 +230,9 @@ services:
     build:
       context: ./docker
       dockerfile: Dockerfile.nginx
+      args:
+        NGINX_BASE_IMAGE: ${NGINX_BASE_IMAGE:-nginx:1.27-alpine}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     restart: unless-stopped
     ports:
       - "80:80"

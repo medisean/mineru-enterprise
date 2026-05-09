@@ -1,10 +1,20 @@
 # MinerU worker image — includes full MinerU model dependencies + LibreOffice for Office->PDF preview
-FROM python:3.11-slim
+ARG PYTHON_BASE_IMAGE=python:3.11-slim
+FROM ${PYTHON_BASE_IMAGE}
 
 WORKDIR /app
 
+ARG APT_MIRROR=
+ARG PIP_INDEX_URL=
+ARG PIP_EXTRA_INDEX_URL=
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
 # System deps: build tools + runtime libs + LibreOffice + CJK fonts
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -n "$APT_MIRROR" ]; then \
+        if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list.d/debian.sources; fi; \
+        if [ -f /etc/apt/sources.list ]; then sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list; fi; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ cmake libmagic1 libgl1 libglib2.0-0 \
     libldap2-dev libsasl2-dev \
     poppler-utils \
@@ -17,17 +27,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # On aarch64 (ARM64) the default PyPI wheel is already CPU-only.
 # Pin a known-good version to avoid surprise breakage.
 ARG TORCH_VERSION=2.7.0
-RUN pip install --no-cache-dir \
+RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
+    && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then python -m pip config set global.extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
+    && python -m pip install --no-cache-dir \
     torch==${TORCH_VERSION} \
     torchvision \
-    --index-url https://download.pytorch.org/whl/cpu || \
-    pip install --no-cache-dir \
+    --extra-index-url ${PYTORCH_INDEX_URL} || \
+    python -m pip install --no-cache-dir \
     torch==${TORCH_VERSION} \
     torchvision
 
 # ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
 COPY requirements.txt requirements-worker.txt ./
-RUN pip install --no-cache-dir -r requirements-worker.txt
+RUN python -m pip install --no-cache-dir -r requirements-worker.txt
 
 # ── Pre-download all MinerU models during build ──────────────────────────────
 # Use HF_ENDPOINT=hf-mirror.com for faster downloads in China.

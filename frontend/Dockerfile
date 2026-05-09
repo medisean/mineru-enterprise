@@ -1,10 +1,18 @@
-FROM node:20-alpine AS base
+ARG NODE_BASE_IMAGE=node:20-alpine
+FROM ${NODE_BASE_IMAGE} AS base
+
+ARG ALPINE_MIRROR=
+RUN if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
 
 # Install dependencies
 FROM base AS deps
 WORKDIR /app
+ARG NPM_REGISTRY=
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
+    && npm ci
 
 # Build
 FROM base AS builder
