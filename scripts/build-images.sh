@@ -11,6 +11,8 @@ PUSH="${PUSH:-false}"
 TORCH_VERSION="${TORCH_VERSION:-2.7.0}"
 CUDA_VERSION="${CUDA_VERSION:-cu124}"
 HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
+REQUIRE_MINERU_MODELS="${REQUIRE_MINERU_MODELS:-true}"
+MINERU_MODEL_DOWNLOAD_SOURCE="${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}"
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
 NEXT_PUBLIC_APP_NAME="${NEXT_PUBLIC_APP_NAME:-MinerU Enterprise}"
 
@@ -27,6 +29,8 @@ Environment:
   TORCH_VERSION       Worker PyTorch version. Default: 2.7.0
   CUDA_VERSION        GPU worker CUDA wheel suffix. Default: cu124
   HF_ENDPOINT         HuggingFace endpoint for model pre-download.
+  REQUIRE_MINERU_MODELS Fail worker builds if model pre-download fails. Default: true
+  MINERU_MODEL_DOWNLOAD_SOURCE MinerU model source. Default: huggingface
   NEXT_PUBLIC_API_URL Frontend build-time API URL.
   NEXT_PUBLIC_APP_NAME Frontend build-time app name.
 
@@ -74,6 +78,8 @@ build_worker() {
   docker_cmd \
     --build-arg "TORCH_VERSION=${TORCH_VERSION}" \
     --build-arg "HF_ENDPOINT=${HF_ENDPOINT}" \
+    --build-arg "REQUIRE_MINERU_MODELS=${REQUIRE_MINERU_MODELS}" \
+    --build-arg "MINERU_MODEL_DOWNLOAD_SOURCE=${MINERU_MODEL_DOWNLOAD_SOURCE}" \
     -t "$image" \
     -f "$ROOT_DIR/backend/Dockerfile.worker" \
     "$ROOT_DIR/backend"
@@ -86,6 +92,8 @@ build_worker_gpu() {
     --build-arg "TORCH_VERSION=${TORCH_VERSION}" \
     --build-arg "CUDA_VERSION=${CUDA_VERSION}" \
     --build-arg "HF_ENDPOINT=${HF_ENDPOINT}" \
+    --build-arg "REQUIRE_MINERU_MODELS=${REQUIRE_MINERU_MODELS}" \
+    --build-arg "MINERU_MODEL_DOWNLOAD_SOURCE=${MINERU_MODEL_DOWNLOAD_SOURCE}" \
     -t "$image" \
     -f "$ROOT_DIR/backend/Dockerfile.worker.gpu" \
     "$ROOT_DIR/backend"

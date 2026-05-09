@@ -32,27 +32,23 @@ RUN pip install --no-cache-dir -r requirements-worker.txt
 # ── Pre-download all MinerU models during build ──────────────────────────────
 # Use HF_ENDPOINT=hf-mirror.com for faster downloads in China.
 # Downloads both pipeline models (PDF-Extract-Kit) and VLM models (MinerU2.5-Pro)
-# so that first-run doesn't hang on model downloads.
+# so production can run in offline environments.
 ARG HF_ENDPOINT=https://hf-mirror.com
+ARG REQUIRE_MINERU_MODELS=true
+ARG MINERU_MODEL_DOWNLOAD_SOURCE=huggingface
+ENV HF_HOME=/opt/mineru-models/huggingface \
+    HUGGINGFACE_HUB_CACHE=/opt/mineru-models/huggingface/hub \
+    TRANSFORMERS_CACHE=/opt/mineru-models/huggingface/hub \
+    MINERU_TOOLS_CONFIG_JSON=/opt/mineru-models/mineru.json \
+    MINERU_MODEL_SOURCE=local \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
-# 1) Pipeline models (used by --backend pipeline and hybrid backends)
-#    MineruPipelineModel init needs formula_config, so we use snapshot_download directly.
-RUN python -c "\
-import os; \
-os.environ['MINERU_DEVICE']='cpu'; \
-from huggingface_hub import snapshot_download; \
-path = snapshot_download('opendatalab/PDF-Extract-Kit-1.0', max_workers=2); \
-print(f'Pipeline model pre-downloaded to: {path}')" \
-|| echo "WARN: pipeline model pre-download failed, will download on first run"
-
-# 2) VLM models (used by --backend hybrid-auto-engine / vlm-auto-engine)
-RUN python -c "\
-import os; \
-os.environ['MINERU_DEVICE']='cpu'; \
-from huggingface_hub import snapshot_download; \
-path = snapshot_download('opendatalab/MinerU2.5-Pro-2604-1.2B', max_workers=2); \
-print(f'VLM model pre-downloaded to: {path}')" \
-|| echo "WARN: VLM model pre-download failed, will download on first run"
+# Use MinerU's official downloader so it also writes models-dir to mineru.json.
+RUN mkdir -p /opt/mineru-models \
+    && HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 MINERU_MODEL_SOURCE="${MINERU_MODEL_DOWNLOAD_SOURCE}" \
+       mineru-models-download --source "${MINERU_MODEL_DOWNLOAD_SOURCE}" --model_type all \
+    || if [ "$REQUIRE_MINERU_MODELS" = "true" ]; then exit 1; else echo "WARN: MinerU model pre-download failed"; fi
 
 COPY . .
 

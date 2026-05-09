@@ -165,9 +165,16 @@ bash scripts/build-images.sh web
 Worker 镜像支持构建参数：
 
 ```bash
-TORCH_VERSION=2.7.0 HF_ENDPOINT=https://hf-mirror.com bash scripts/build-images.sh worker
-CUDA_VERSION=cu124 bash scripts/build-images.sh worker-gpu
+TORCH_VERSION=2.7.0 HF_ENDPOINT=https://hf-mirror.com REQUIRE_MINERU_MODELS=true bash scripts/build-images.sh worker
+CUDA_VERSION=cu124 REQUIRE_MINERU_MODELS=true bash scripts/build-images.sh worker-gpu
 ```
+
+`worker` 和 `worker-gpu` 默认会在构建阶段强制下载 MinerU 模型：
+
+- pipeline 解析模型
+- VLM 解析模型
+
+模型通过 MinerU 官方 `mineru-models-download --model_type all` 写入镜像内的 `/opt/mineru-models`，并生成 `/opt/mineru-models/mineru.json`。如果下载失败，构建会失败，避免把缺模型的镜像带到无公网生产环境。运行时默认设置 `MINERU_MODEL_SOURCE=local`、`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1`，不会再尝试联网下载模型。
 
 `docker-compose.yml` 也已绑定同一套镜像变量。构建或部署指定版本：
 

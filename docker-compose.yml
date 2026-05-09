@@ -8,6 +8,8 @@ x-worker-build: &worker-build
   args:
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+    REQUIRE_MINERU_MODELS: ${REQUIRE_MINERU_MODELS:-true}
+    MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
 
 x-worker-gpu-build: &worker-gpu-build
   context: ./backend
@@ -16,6 +18,8 @@ x-worker-gpu-build: &worker-gpu-build
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     CUDA_VERSION: ${CUDA_VERSION:-cu124}
     HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+    REQUIRE_MINERU_MODELS: ${REQUIRE_MINERU_MODELS:-true}
+    MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
 
 x-web-build: &web-build
   context: ./frontend
@@ -124,7 +128,13 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cpu"
-      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
+      HF_HOME: "/opt/mineru-models/huggingface"
+      HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
+      TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
+      MINERU_TOOLS_CONFIG_JSON: "/opt/mineru-models/mineru.json"
+      MINERU_MODEL_SOURCE: "local"
+      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
+      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,9 +142,6 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-      - paddleocr_models:/root/.paddleocr
-      - mineru_models:/root/.mineru
-      - huggingface_cache:/root/.cache/huggingface
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c 2 --loglevel=info
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
@@ -150,16 +157,18 @@ services:
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cuda"
       NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
-      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
+      HF_HOME: "/opt/mineru-models/huggingface"
+      HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
+      TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
+      MINERU_TOOLS_CONFIG_JSON: "/opt/mineru-models/mineru.json"
+      MINERU_MODEL_SOURCE: "local"
+      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
+      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - paddleocr_models:/root/.paddleocr
-      - mineru_models:/root/.mineru
-      - huggingface_cache:/root/.cache/huggingface
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_gpu -c 2 --loglevel=info
     deploy:
       resources:
@@ -219,6 +228,3 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
-  paddleocr_models:
-  mineru_models:
-  huggingface_cache:
