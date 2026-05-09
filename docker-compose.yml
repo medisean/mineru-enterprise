@@ -1,3 +1,29 @@
+x-backend-build: &backend-build
+  context: ./backend
+  dockerfile: Dockerfile
+
+x-worker-build: &worker-build
+  context: ./backend
+  dockerfile: Dockerfile.worker
+  args:
+    TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
+    HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+
+x-worker-gpu-build: &worker-gpu-build
+  context: ./backend
+  dockerfile: Dockerfile.worker.gpu
+  args:
+    TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
+    CUDA_VERSION: ${CUDA_VERSION:-cu124}
+    HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+
+x-web-build: &web-build
+  context: ./frontend
+  dockerfile: Dockerfile
+  args:
+    NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-MinerU Enterprise}
+
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
@@ -65,9 +91,8 @@ services:
 
   # ── Backend API ──────────────────────────────────────────────────────────────
   api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/api:${IMAGE_TAG:-latest}
+    build: *backend-build
     restart: unless-stopped
     env_file: .env
     environment:
@@ -89,9 +114,8 @@ services:
 
   # ── Celery Worker (parse jobs) ───────────────────────────────────────────────
   worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/worker:${IMAGE_TAG:-latest}
+    build: *worker-build
     restart: unless-stopped
     env_file: .env
     environment:
@@ -115,9 +139,8 @@ services:
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
   worker-gpu:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker.gpu
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/worker-gpu:${IMAGE_TAG:-latest}
+    build: *worker-gpu-build
     restart: unless-stopped
     env_file: .env
     environment:
@@ -149,9 +172,8 @@ services:
 
   # ── Flower (Celery monitoring, optional) ────────────────────────────────────
   flower:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/api:${IMAGE_TAG:-latest}
+    build: *backend-build
     restart: unless-stopped
     env_file: .env
     environment:
@@ -165,12 +187,8 @@ services:
 
   # ── Frontend ─────────────────────────────────────────────────────────────────
   web:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-MinerU Enterprise}
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/web:${IMAGE_TAG:-latest}
+    build: *web-build
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -181,7 +199,10 @@ services:
 
   # ── Nginx reverse proxy ──────────────────────────────────────────────────────
   nginx:
-    image: nginx:alpine
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/nginx:${IMAGE_TAG:-latest}
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.nginx
     restart: unless-stopped
     ports:
       - "80:80"

@@ -122,6 +122,60 @@ NVIDIA_VISIBLE_DEVICES=all  # 指定可见 GPU，如 "0" 或 "0,1"
 
 > 本地开发默认使用 CPU 模式，无需 GPU 驱动。
 
+### 5. 单独构建服务镜像
+
+项目内置 `scripts/build-images.sh`，可以按服务独立打镜像，也可以一次构建全部业务镜像。
+
+```bash
+# 默认镜像名：
+# mineru-enterprise/api:latest
+# mineru-enterprise/web:latest
+# mineru-enterprise/worker:latest
+# mineru-enterprise/worker-gpu:latest
+# mineru-enterprise/nginx:latest
+
+bash scripts/build-images.sh api
+bash scripts/build-images.sh web
+bash scripts/build-images.sh worker
+bash scripts/build-images.sh worker-gpu
+bash scripts/build-images.sh nginx
+bash scripts/build-images.sh cpu     # api + web + CPU worker + nginx
+bash scripts/build-images.sh all     # api + web + CPU worker + GPU worker + nginx
+```
+
+自定义仓库、版本号、平台和推送：
+
+```bash
+IMAGE_REPOSITORY=registry.example.com/mineru \
+IMAGE_TAG=v1.0.0 \
+PLATFORM=linux/amd64 \
+PUSH=true \
+bash scripts/build-images.sh all
+```
+
+前端镜像会在构建时固化 `NEXT_PUBLIC_API_URL`：
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.example.com \
+IMAGE_REPOSITORY=registry.example.com/mineru \
+IMAGE_TAG=v1.0.0 \
+bash scripts/build-images.sh web
+```
+
+Worker 镜像支持构建参数：
+
+```bash
+TORCH_VERSION=2.7.0 HF_ENDPOINT=https://hf-mirror.com bash scripts/build-images.sh worker
+CUDA_VERSION=cu124 bash scripts/build-images.sh worker-gpu
+```
+
+`docker-compose.yml` 也已绑定同一套镜像变量。构建或部署指定版本：
+
+```bash
+IMAGE_REPOSITORY=registry.example.com/mineru IMAGE_TAG=v1.0.0 docker compose build api web
+IMAGE_REPOSITORY=registry.example.com/mineru IMAGE_TAG=v1.0.0 docker compose up -d
+```
+
 ---
 
 ## 目录结构
