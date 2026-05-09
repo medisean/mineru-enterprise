@@ -168,10 +168,8 @@ ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
 NPM_REGISTRY=https://registry.npmmirror.com \
 bash scripts/build-images.sh web
 
-# CPU Worker: PyTorch CPU wheel 源、MinerU 模型源
+# CPU Worker: PyTorch CPU wheel 源
 PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu \
-MINERU_MODEL_DOWNLOAD_SOURCE=huggingface \
-HF_ENDPOINT=https://hf-mirror.com \
 bash scripts/build-images.sh worker
 
 # GPU Worker: CUDA 基础镜像、PyTorch CUDA wheel 源
@@ -197,16 +195,18 @@ bash scripts/build-images.sh web
 Worker 镜像支持构建参数：
 
 ```bash
-TORCH_VERSION=2.7.0 HF_ENDPOINT=https://hf-mirror.com REQUIRE_MINERU_MODELS=true bash scripts/build-images.sh worker
-CUDA_VERSION=cu124 REQUIRE_MINERU_MODELS=true bash scripts/build-images.sh worker-gpu
+TORCH_VERSION=2.7.0 bash scripts/build-images.sh worker
+CUDA_VERSION=cu124 bash scripts/build-images.sh worker-gpu
 ```
 
-`worker` 和 `worker-gpu` 默认会在构建阶段强制下载 MinerU 模型：
+`worker` 和 `worker-gpu` 不在构建阶段下载 MinerU 模型。构建前需要准备本地模型包：
 
-- pipeline 解析模型
-- VLM 解析模型
+```text
+backend/mineru-models/   # 已下载好的 MinerU 模型文件
+backend/mineru.json      # MinerU 本地模型配置
+```
 
-模型通过 MinerU 官方 `mineru-models-download --model_type all` 写入镜像内的 `/opt/mineru-models`，并生成 `/opt/mineru-models/mineru.json`。如果下载失败，构建会失败，避免把缺模型的镜像带到无公网生产环境。运行时默认设置 `MINERU_MODEL_SOURCE=local`、`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1`，不会再尝试联网下载模型。
+构建时会把 `backend/mineru-models/` 复制到镜像内 `/opt/mineru-models/`，并把 `backend/mineru.json` 复制到镜像内 `/root/mineru.json`。运行时默认设置 `MINERU_MODEL_SOURCE=local`、`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1`，不会尝试联网下载模型。
 
 `docker-compose.yml` 也已绑定同一套镜像变量。构建或部署指定版本：
 

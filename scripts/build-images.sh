@@ -20,9 +20,6 @@ PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-}"
 NPM_REGISTRY="${NPM_REGISTRY:-}"
 TORCH_VERSION="${TORCH_VERSION:-2.7.0}"
 CUDA_VERSION="${CUDA_VERSION:-cu124}"
-HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
-REQUIRE_MINERU_MODELS="${REQUIRE_MINERU_MODELS:-true}"
-MINERU_MODEL_DOWNLOAD_SOURCE="${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}"
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
 NEXT_PUBLIC_APP_NAME="${NEXT_PUBLIC_APP_NAME:-MinerU Enterprise}"
 
@@ -48,9 +45,6 @@ Environment:
   NPM_REGISTRY        npm registry mirror.
   TORCH_VERSION       Worker PyTorch version. Default: 2.7.0
   CUDA_VERSION        GPU worker CUDA wheel suffix. Default: cu124
-  HF_ENDPOINT         HuggingFace endpoint for model pre-download.
-  REQUIRE_MINERU_MODELS Fail worker builds if model pre-download fails. Default: true
-  MINERU_MODEL_DOWNLOAD_SOURCE MinerU model source. Default: huggingface
   NEXT_PUBLIC_API_URL Frontend build-time API URL.
   NEXT_PUBLIC_APP_NAME Frontend build-time app name.
 
@@ -73,6 +67,25 @@ push_image() {
   local image="$1"
   if [[ "$PUSH" == "true" || "$PUSH" == "1" || "$PUSH" == "yes" ]]; then
     docker push "$image"
+  fi
+}
+
+check_mineru_model_bundle() {
+  if [[ ! -d "$ROOT_DIR/backend/mineru-models" ]]; then
+    echo "ERROR: backend/mineru-models/ is required for worker image builds." >&2
+    echo "Place your pre-downloaded MinerU model files there before building worker images." >&2
+    exit 1
+  fi
+  if ! find "$ROOT_DIR/backend/mineru-models" -mindepth 1 \
+    ! -name ".gitkeep" ! -name "README.md" | grep -q .; then
+    echo "ERROR: backend/mineru-models/ does not contain model files." >&2
+    echo "Only placeholder files were found. Copy the real MinerU model files into this directory." >&2
+    exit 1
+  fi
+  if [[ ! -f "$ROOT_DIR/backend/mineru.json" ]]; then
+    echo "ERROR: backend/mineru.json is required for worker image builds." >&2
+    echo "It will be copied to /root/mineru.json inside the worker image." >&2
+    exit 1
   fi
 }
 
@@ -106,6 +119,7 @@ build_web() {
 build_worker() {
   local image="${IMAGE_REPOSITORY}/worker:${IMAGE_TAG}"
   local pytorch_index="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+  check_mineru_model_bundle
   docker_cmd \
     --build-arg "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \
@@ -113,9 +127,6 @@ build_worker() {
     --build-arg "PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}" \
     --build-arg "PYTORCH_INDEX_URL=${pytorch_index}" \
     --build-arg "TORCH_VERSION=${TORCH_VERSION}" \
-    --build-arg "HF_ENDPOINT=${HF_ENDPOINT}" \
-    --build-arg "REQUIRE_MINERU_MODELS=${REQUIRE_MINERU_MODELS}" \
-    --build-arg "MINERU_MODEL_DOWNLOAD_SOURCE=${MINERU_MODEL_DOWNLOAD_SOURCE}" \
     -t "$image" \
     -f "$ROOT_DIR/backend/Dockerfile.worker" \
     "$ROOT_DIR/backend"
@@ -125,6 +136,7 @@ build_worker() {
 build_worker_gpu() {
   local image="${IMAGE_REPOSITORY}/worker-gpu:${IMAGE_TAG}"
   local pytorch_index="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/${CUDA_VERSION}}"
+  check_mineru_model_bundle
   docker_cmd \
     --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \
@@ -133,9 +145,6 @@ build_worker_gpu() {
     --build-arg "PYTORCH_INDEX_URL=${pytorch_index}" \
     --build-arg "TORCH_VERSION=${TORCH_VERSION}" \
     --build-arg "CUDA_VERSION=${CUDA_VERSION}" \
-    --build-arg "HF_ENDPOINT=${HF_ENDPOINT}" \
-    --build-arg "REQUIRE_MINERU_MODELS=${REQUIRE_MINERU_MODELS}" \
-    --build-arg "MINERU_MODEL_DOWNLOAD_SOURCE=${MINERU_MODEL_DOWNLOAD_SOURCE}" \
     -t "$image" \
     -f "$ROOT_DIR/backend/Dockerfile.worker.gpu" \
     "$ROOT_DIR/backend"

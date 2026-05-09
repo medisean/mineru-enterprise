@@ -17,9 +17,6 @@ x-worker-build: &worker-build
     PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
-    HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
-    REQUIRE_MINERU_MODELS: ${REQUIRE_MINERU_MODELS:-true}
-    MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
 
 x-worker-gpu-build: &worker-gpu-build
   context: ./backend
@@ -32,9 +29,6 @@ x-worker-gpu-build: &worker-gpu-build
     PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/${CUDA_VERSION:-cu124}}
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     CUDA_VERSION: ${CUDA_VERSION:-cu124}
-    HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
-    REQUIRE_MINERU_MODELS: ${REQUIRE_MINERU_MODELS:-true}
-    MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
 
 x-web-build: &web-build
   context: ./frontend
@@ -149,7 +143,6 @@ services:
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
-      MINERU_TOOLS_CONFIG_JSON: "/opt/mineru-models/mineru.json"
       MINERU_MODEL_SOURCE: "local"
       HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
@@ -178,7 +171,6 @@ services:
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
-      MINERU_TOOLS_CONFIG_JSON: "/opt/mineru-models/mineru.json"
       MINERU_MODEL_SOURCE: "local"
       HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
