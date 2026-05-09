@@ -11,6 +11,8 @@ Endpoints:
 """
 import uuid
 import time
+import mimetypes
+from pathlib import Path
 import structlog
 from typing import Optional
 
@@ -28,10 +30,45 @@ from app.schemas.schemas import (
 )
 from app.services.storage import storage_service
 from app.workers.parse_worker import dispatch_parse_task
+from app.services.file_validation import validate_file_magic
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/agent", tags=["MinerU Agent API"])
+
+CONTENT_TYPE_TO_EXTENSION = {
+    "application/pdf": "pdf",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/jp2": "jp2",
+    "image/jpeg2000": "jp2",
+    "image/gif": "gif",
+    "image/bmp": "bmp",
+    "image/webp": "webp",
+    "image/tiff": "tiff",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+}
+CONTENT_TYPE_BY_EXTENSION = {
+    "pdf": "application/pdf",
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "jp2": "image/jp2",
+    "webp": "image/webp",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "tiff": "image/tiff",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+class UnsupportedDownloadedFileType(ValueError):
+    pass
 
 # Simple in-memory rate limiter (per-IP)
 _rate_limit_store: dict[str, list[float]] = {}
@@ -108,10 +145,48 @@ async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
         filename = f"{filename}.{ext}"
 
     data = resp.content
+    content_type = resp.headers.get("content-type", "")
+    ext = Path(filename).suffix.lstrip(".").lower()
+    if ext not in settings.ALLOWED_EXTENSIONS:
+        mime = content_type.split(";", 1)[0].strip().lower()
+        ext = CONTENT_TYPE_TO_EXTENSION.get(mime) or ""
+        if not ext and mime:
+            guessed = mimetypes.guess_extension(mime)
+            ext = guessed.lstrip(".").lower() if guessed else ""
+        if not ext:
+            if data.startswith(b"%PDF"):
+                ext = "pdf"
+            elif data.startswith(b"\x89PNG"):
+                ext = "png"
+            elif data.startswith(b"\xff\xd8\xff"):
+                ext = "jpg"
+            elif data.startswith(b"GIF8"):
+                ext = "gif"
+            elif data.startswith(b"BM"):
+                ext = "bmp"
+            elif data.startswith(b"\x00\x00\x00\x0cjP  \r\n\x87\n") or data.startswith(b"\xffO\xffQ"):
+                ext = "jp2"
+            elif data.startswith(b"II*\x00") or data.startswith(b"MM\x00*"):
+                ext = "tiff"
+            elif data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP":
+                ext = "webp"
+        if ext not in settings.ALLOWED_EXTENSIONS:
+            raise UnsupportedDownloadedFileType(f"Unsupported file type from URL: {filename}")
+
+        current_ext = Path(filename).suffix.lstrip(".").lower()
+        if current_ext != ext:
+            filename = f"{Path(filename).stem or 'document'}.{ext}"
+
+    if not validate_file_magic(data[:32], ext):
+        raise UnsupportedDownloadedFileType(f"File content does not match the '.{ext}' format: {filename}")
+
     size = len(data)
     s3_key = f"uploads/{user_id}/{uuid.uuid4()}/{filename}"
-    content_type = resp.headers.get("content-type", "application/octet-stream")
-    storage_service.upload_bytes(s3_key, data, content_type)
+    storage_service.upload_bytes(
+        s3_key,
+        data,
+        CONTENT_TYPE_BY_EXTENSION.get(ext, content_type or "application/octet-stream"),
+    )
 
     return s3_key, filename, size
 
@@ -134,6 +209,9 @@ async def agent_parse_url(
 
     try:
         s3_key, filename, size = await _download_url_to_s3(payload.url, user_id)
+    except UnsupportedDownloadedFileType as e:
+        logger.warning("Agent: unsupported file from URL", url=payload.url, error=str(e))
+        return {"code": -30002, "msg": str(e), "trace_id": _trace_id(), "data": None}
     except Exception as e:
         logger.error("Agent: failed to download URL", url=payload.url, error=str(e))
         return {"code": -60008, "msg": "Failed to download file from URL", "trace_id": _trace_id(), "data": None}

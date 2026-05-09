@@ -24,20 +24,16 @@ MAGIC_SIGNATURES: list[tuple[int, bytes, set[str]]] = [
     (0, b"BM", {"bmp"}),
     # WebP: RIFF....WEBP
     (0, b"RIFF", {"webp"}),  # WebP starts with RIFF, we check WEBP at offset 8 below
+    # JPEG 2000: JP2 file signature or raw codestream signature
+    (0, b"\x00\x00\x00\x0cjP  \r\n\x87\n", {"jp2"}),
+    (0, b"\xffO\xffQ", {"jp2"}),
+    # TIFF: little-endian or big-endian header
+    (0, b"II*\x00", {"tiff"}),
+    (0, b"MM\x00*", {"tiff"}),
     # ZIP-based formats (DOCX, PPTX, XLSX are ZIP archives)
     # PK\x03\x04 = ZIP local file header
-    (0, b"PK\x03\x04", {"docx", "pptx", "xlsx", "doc", "ppt", "xls"}),
-    # Microsoft Compound File Binary Format (legacy .doc, .ppt, .xls)
-    # D0 CF 11 E0 A1 B1 1A E1
-    (0, b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", {"doc", "ppt", "xls"}),
-    # JPEG 2000: 00 00 00 0C 6A 50 20 20
-    (0, b"\x00\x00\x00\x0c\x6a\x50", {"jp2"}),
-    # HTML: starts with <! or <html or <?xml (loose check)
-    # Note: HTML is text-based, so we just check it starts with '<' after optional whitespace
+    (0, b"PK\x03\x04", {"docx", "pptx", "xlsx"}),
 ]
-
-# Extensions that are text-based and cannot be reliably validated by magic bytes.
-TEXT_EXTENSIONS = {"html", "htm"}
 
 
 def validate_file_magic(head_bytes: bytes, claimed_extension: str) -> bool:
@@ -55,19 +51,6 @@ def validate_file_magic(head_bytes: bytes, claimed_extension: str) -> bool:
         logger.warning("Empty head bytes, skipping magic validation", ext=claimed_extension)
         return True
 
-    # Text-based formats: just check it looks like text
-    if claimed_extension in TEXT_EXTENSIONS:
-        # HTML files are text; accept if content starts with '<' (after trimming whitespace)
-        stripped = head_bytes.lstrip()
-        if stripped and stripped[0:1] == b"<":
-            return True
-        # Also accept if it's valid UTF-8 text
-        try:
-            head_bytes.decode("utf-8")
-            return True
-        except UnicodeDecodeError:
-            return False
-
     # Check known magic signatures
     matched_extensions: set[str] = set()
     for offset, pattern, extensions in MAGIC_SIGNATURES:
@@ -80,10 +63,10 @@ def validate_file_magic(head_bytes: bytes, claimed_extension: str) -> bool:
         if head_bytes[8:12] == b"WEBP":
             matched_extensions.add("webp")
 
-    # If no signature matched, we can't validate — allow it (conservative)
+    # If no signature matched, reject it for the supported upload set.
     if not matched_extensions:
-        logger.info("No magic signature matched, allowing by default", ext=claimed_extension)
-        return True
+        logger.warning("No magic signature matched", ext=claimed_extension)
+        return False
 
     # The claimed extension must be in the matched set
     if claimed_extension in matched_extensions:
@@ -91,8 +74,8 @@ def validate_file_magic(head_bytes: bytes, claimed_extension: str) -> bool:
 
     # Special: ZIP-based formats (docx/pptx/xlsx) all share PK signature.
     # We can't distinguish between them via magic bytes alone, so allow all
-    # ZIP-based extensions if the file is a ZIP.
-    zip_extensions = {"docx", "pptx", "xlsx", "doc", "ppt", "xls"}
+    # supported ZIP-based Office extensions if the file is a ZIP.
+    zip_extensions = {"docx", "pptx", "xlsx"}
     if claimed_extension in zip_extensions and matched_extensions & zip_extensions:
         return True
 

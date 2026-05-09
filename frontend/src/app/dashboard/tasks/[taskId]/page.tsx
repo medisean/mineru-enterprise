@@ -69,8 +69,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const PDF_EXTENSIONS = ["pdf"];
-const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "bmp", "webp", "gif"];
-const OFFICE_EXTENSIONS = ["pptx", "ppt", "docx", "doc", "xlsx", "xls"];
+const IMAGE_EXTENSIONS = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"];
+const OFFICE_EXTENSIONS = ["pptx", "docx", "xlsx"];
 
 function isPdfFile(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -89,9 +89,9 @@ function isOfficeFile(filename: string) {
 
 function getOfficeFileType(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
-  if (["pptx", "ppt"].includes(ext)) return "PowerPoint";
-  if (["docx", "doc"].includes(ext)) return "Word";
-  if (["xlsx", "xls"].includes(ext)) return "Excel";
+  if (ext === "pptx") return "PowerPoint";
+  if (ext === "docx") return "Word";
+  if (ext === "xlsx") return "Excel";
   return "Office";
 }
 

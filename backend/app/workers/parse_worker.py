@@ -250,7 +250,7 @@ def _guess_content_type(filename: str) -> str:
 def _get_office_extension(s3_key: str) -> str | None:
     """Return the office extension if the file is an Office document, else None."""
     ext = s3_key.rsplit(".", 1)[-1].lower() if "." in s3_key else ""
-    office_exts = {"pptx", "ppt", "docx", "doc", "xlsx", "xls"}
+    office_exts = {"pptx", "docx", "xlsx"}
     return ext if ext in office_exts else None
 
 

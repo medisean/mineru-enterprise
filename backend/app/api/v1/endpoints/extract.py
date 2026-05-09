@@ -11,8 +11,10 @@ Endpoints:
 """
 import uuid
 import time
+import mimetypes
 import structlog
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -30,12 +32,47 @@ from app.schemas.schemas import (
     BatchUrlExtractRequest, BatchUrlExtractData,
     BatchExtractResultData, BatchExtractResultItem,
 )
+from app.services.file_validation import validate_file_magic
 from app.services.storage import storage_service
 from app.workers.parse_worker import dispatch_parse_task
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v4", tags=["MinerU Precision API"])
+
+CONTENT_TYPE_TO_EXTENSION = {
+    "application/pdf": "pdf",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/jp2": "jp2",
+    "image/jpeg2000": "jp2",
+    "image/gif": "gif",
+    "image/bmp": "bmp",
+    "image/webp": "webp",
+    "image/tiff": "tiff",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+}
+CONTENT_TYPE_BY_EXTENSION = {
+    "pdf": "application/pdf",
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "jp2": "image/jp2",
+    "webp": "image/webp",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "tiff": "image/tiff",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+class UnsupportedDownloadedFileType(ValueError):
+    pass
 
 
 # ── Internal status mapper ──────────────────────────────────────────────────
@@ -98,6 +135,38 @@ def _dispatch_celery_task(task: ParseTask, config: dict):
     return dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, config)
 
 
+def _infer_supported_extension(filename: str, content_type: str, data: bytes) -> str:
+    ext = Path(filename).suffix.lstrip(".").lower()
+    if ext in settings.ALLOWED_EXTENSIONS:
+        return ext
+
+    mime = content_type.split(";", 1)[0].strip().lower()
+    inferred = CONTENT_TYPE_TO_EXTENSION.get(mime)
+    if not inferred and mime:
+        guessed = mimetypes.guess_extension(mime)
+        inferred = guessed.lstrip(".").lower() if guessed else ""
+    if inferred in settings.ALLOWED_EXTENSIONS:
+        return inferred
+
+    if data.startswith(b"%PDF"):
+        return "pdf"
+    if data.startswith(b"\x89PNG"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if data.startswith(b"GIF8"):
+        return "gif"
+    if data.startswith(b"BM"):
+        return "bmp"
+    if data.startswith(b"\x00\x00\x00\x0cjP  \r\n\x87\n") or data.startswith(b"\xffO\xffQ"):
+        return "jp2"
+    if data.startswith(b"II*\x00") or data.startswith(b"MM\x00*"):
+        return "tiff"
+    if data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP":
+        return "webp"
+    return ""
+
+
 async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
     """Download a file from URL and upload to S3. Returns (s3_key, filename, size)."""
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
@@ -117,10 +186,24 @@ async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
             filename = f"{filename}.{ext}"
 
     data = resp.content
+    content_type = resp.headers.get("content-type", "")
+    ext = _infer_supported_extension(filename, content_type, data)
+    if not ext:
+        raise UnsupportedDownloadedFileType(f"File format not supported: {filename}")
+    if not validate_file_magic(data[:32], ext):
+        raise UnsupportedDownloadedFileType(f"File content does not match the '.{ext}' format: {filename}")
+
+    current_ext = Path(filename).suffix.lstrip(".").lower()
+    if current_ext != ext:
+        filename = f"{Path(filename).stem or 'document'}.{ext}"
+
     size = len(data)
     s3_key = f"uploads/{user_id}/{uuid.uuid4()}/{filename}"
-    content_type = resp.headers.get("content-type", "application/octet-stream")
-    storage_service.upload_bytes(s3_key, data, content_type)
+    storage_service.upload_bytes(
+        s3_key,
+        data,
+        CONTENT_TYPE_BY_EXTENSION.get(ext, content_type or "application/octet-stream"),
+    )
 
     return s3_key, filename, size
 
@@ -137,6 +220,9 @@ async def extract_task(
     """Create a parse task from a file URL (MinerU official API compatible)."""
     try:
         s3_key, filename, size = await _download_url_to_s3(payload.url, current_user.id)
+    except UnsupportedDownloadedFileType as e:
+        logger.warning("Unsupported file from URL", url=payload.url, error=str(e))
+        return {"code": -60002, "msg": str(e), "trace_id": _trace_id(), "data": None}
     except Exception as e:
         logger.error("Failed to download file from URL", url=payload.url, error=str(e))
         return {"code": -60008, "msg": "Failed to download file from URL", "trace_id": _trace_id(), "data": None}
@@ -322,6 +408,9 @@ async def batch_url_extract(
     for f in payload.files:
         try:
             s3_key, filename, size = await _download_url_to_s3(f.url, current_user.id)
+        except UnsupportedDownloadedFileType as e:
+            logger.warning("Batch: unsupported URL file", url=f.url, error=str(e))
+            continue
         except Exception as e:
             logger.error("Batch: failed to download URL", url=f.url, error=str(e))
             continue

@@ -2,7 +2,7 @@
 
 企业级 MinerU 文档解析平台。在原版 MinerU 的解析内核基础上，补齐了企业化所需的全套能力：
 
-- **全格式支持**：PDF / DOC / DOCX / PPT / PPTX / XLSX / PNG / JPG / GIF / BMP / WebP / JP2 / HTML
+- **官方输入格式对齐**：PDF / 图片（PNG / JPEG / JP2 / WebP / GIF / BMP / JPG / TIFF）/ DOCX / PPTX / XLSX
 - **丰富解析参数**：OCR 开关、公式识别、表格识别、页码范围、10+ 语言、3 种解析引擎
 - **多种输出格式**：Markdown / JSON / DOCX / HTML / LaTeX
 - **在线预览**：Markdown 渲染预览 + 一键复制 + 文件下载
@@ -19,7 +19,7 @@
 
 | 能力 | MinerU 官方 | MinerU Enterprise |
 |------|:-----------:|:-----------------:|
-| 文件格式 | PDF/DOC/DOCX/PPT/PPTX/XLSX/图片/HTML | 同官方，全部对齐 |
+| 文件格式 | PDF/图片/DOCX/PPTX/XLSX | 同官方，全部对齐 |
 | 解析引擎 | pipeline / vlm / MinerU-HTML | 同官方 |
 | 解析参数 | OCR / 公式 / 表格 / 页码范围 / 语言 | 同官方，全部对齐 |
 | 输出格式 | Markdown / JSON / DOCX / HTML / LaTeX | 同官方 |
@@ -297,6 +297,17 @@ mineru-enterprise/
 | DELETE | `/api/v1/tasks/{id}` | 取消任务 |
 | POST | `/api/v1/tasks/batch/upload-urls` | **批量预签名 URL（≤50）** |
 | POST | `/api/v1/tasks/batch/tasks` | **批量创建任务（≤200）** |
+
+### MinerU 官方兼容 API
+
+输入格式与官方 FastAPI 对齐：PDF、图片（PNG / JPEG / JP2 / WebP / GIF / BMP / JPG / TIFF）、DOCX、PPTX、XLSX。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/file_parse` | 同步解析，表单参数对齐官方 MinerU FastAPI |
+| POST | `/tasks` | 异步提交解析任务 |
+| GET | `/tasks/{task_id}` | 查询任务状态 |
+| GET | `/tasks/{task_id}/result` | 获取任务结果 |
 
 ### 任务创建参数
 

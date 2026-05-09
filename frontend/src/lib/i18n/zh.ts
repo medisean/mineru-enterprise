@@ -45,12 +45,12 @@ export const zh: Record<string, string> = {
 
   // ── Dashboard ────────────────────────────────────────────────────────
   "dashboard.uploadTitle": "上传文档",
-  "dashboard.uploadDesc": "支持 PDF/DOC/DOCX/PPT/PPTX/XLSX/图片/HTML，解析为 Markdown",
+  "dashboard.uploadDesc": "支持 PDF、图片、DOCX、PPTX、XLSX，解析为 Markdown",
 
   // ── Upload Panel ─────────────────────────────────────────────────────
   "upload.dragActive": "松开以上传文件",
   "upload.dragIdle": "拖拽文件到此处，或点击选择",
-  "upload.supportFormats": "支持 PDF/DOC/DOCX/PPT/PPTX/XLSX/图片/HTML，解析为 Markdown",
+  "upload.supportFormats": "支持 PDF、图片、DOCX、PPTX、XLSX，解析为 Markdown",
   "upload.docLanguage": "文档语言",
   "upload.parseEngine": "解析引擎",
   "upload.autoDetect": "自动检测",

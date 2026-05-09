@@ -107,9 +107,9 @@ class Settings(BaseSettings):
     # ── File Limits ───────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 200
     ALLOWED_EXTENSIONS: List[str] = [
-        "pdf", "doc", "docx", "ppt", "pptx", "xlsx",
-        "png", "jpg", "jpeg", "gif", "bmp", "webp", "jp2",
-        "html",
+        "pdf",
+        "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff",
+        "docx", "pptx", "xlsx",
     ]
 
     # ── MinerU Parse Options ─────────────────────────────────────────────

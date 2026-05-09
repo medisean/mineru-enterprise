@@ -45,12 +45,12 @@ export const en: Record<string, string> = {
 
   // ── Dashboard ────────────────────────────────────────────────────────
   "dashboard.uploadTitle": "Upload Document",
-  "dashboard.uploadDesc": "Supports PDF/DOC/DOCX/PPT/PPTX/XLSX/Images/HTML, parsed to Markdown",
+  "dashboard.uploadDesc": "Supports PDF, images, DOCX, PPTX, and XLSX, parsed to Markdown",
 
   // ── Upload Panel ─────────────────────────────────────────────────────
   "upload.dragActive": "Drop to upload",
   "upload.dragIdle": "Drag files here, or click to select",
-  "upload.supportFormats": "Supports PDF/DOC/DOCX/PPT/PPTX/XLSX/Images/HTML, parsed to Markdown",
+  "upload.supportFormats": "Supports PDF, images, DOCX, PPTX, and XLSX, parsed to Markdown",
   "upload.docLanguage": "Document Language",
   "upload.parseEngine": "Parse Engine",
   "upload.autoDetect": "Auto Detect",

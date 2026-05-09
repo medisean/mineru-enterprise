@@ -59,6 +59,8 @@ async def create_task(
 ):
     # Validate file content matches claimed extension (magic bytes check)
     ext = payload.original_filename.rsplit(".", 1)[-1].lower() if "." in payload.original_filename else ""
+    if ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type '.{ext}' not allowed")
     if ext:
         try:
             head = storage_service.read_head_bytes(payload.s3_key, 32)
@@ -149,7 +151,7 @@ async def get_task(
 
 
 # ── Get source file presigned URL (for inline preview) ─────────────────────
-OFFICE_EXTENSIONS = {"pptx", "ppt", "docx", "doc", "xlsx", "xls"}
+OFFICE_EXTENSIONS = {"pptx", "docx", "xlsx"}
 
 
 @router.get("/{task_id}/source-url")
@@ -413,6 +415,8 @@ async def batch_create_tasks(
     # Validate file content for all payloads (magic bytes check)
     for payload in payloads:
         ext = payload.original_filename.rsplit(".", 1)[-1].lower() if "." in payload.original_filename else ""
+        if ext not in settings.ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"File type '.{ext}' not allowed for '{payload.original_filename}'")
         if ext:
             try:
                 head = storage_service.read_head_bytes(payload.s3_key, 32)

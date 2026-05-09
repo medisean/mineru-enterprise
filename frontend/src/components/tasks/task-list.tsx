@@ -8,7 +8,7 @@ import { tasksApi } from "@/lib/api";
 import { apiClient } from "@/lib/api";
 import {
   CheckCircle2, XCircle, Clock, Loader2, FileText,
-  FileSpreadsheet, FileImage, File, FileCode, FileArchive,
+  FileSpreadsheet, FileImage, File,
   ChevronLeft, ChevronRight, ChevronDown, Search, RotateCcw, Trash2,
   Download, X, AlertTriangle,
 } from "lucide-react";
@@ -50,29 +50,17 @@ const STATUS_FILTERS = [
 
 const FILE_TYPE_MAP: Record<string, { icon: React.ElementType; color: string }> = {
   pdf:  { icon: FileText, color: "text-red-500" },
-  doc:  { icon: FileText, color: "text-blue-500" },
   docx: { icon: FileText, color: "text-blue-500" },
-  ppt:  { icon: File, color: "text-orange-500" },
   pptx: { icon: File, color: "text-orange-500" },
-  xls:  { icon: FileSpreadsheet, color: "text-green-600" },
   xlsx: { icon: FileSpreadsheet, color: "text-green-600" },
-  csv:  { icon: FileSpreadsheet, color: "text-green-600" },
   png:  { icon: FileImage, color: "text-purple-500" },
   jpg:  { icon: FileImage, color: "text-purple-500" },
   jpeg: { icon: FileImage, color: "text-purple-500" },
+  jp2:  { icon: FileImage, color: "text-purple-500" },
   gif:  { icon: FileImage, color: "text-purple-500" },
   bmp:  { icon: FileImage, color: "text-purple-500" },
-  svg:  { icon: FileImage, color: "text-purple-500" },
+  tiff: { icon: FileImage, color: "text-purple-500" },
   webp: { icon: FileImage, color: "text-purple-500" },
-  html: { icon: FileCode, color: "text-cyan-500" },
-  htm:  { icon: FileCode, color: "text-cyan-500" },
-  zip:  { icon: FileArchive, color: "text-yellow-600" },
-  rar:  { icon: FileArchive, color: "text-yellow-600" },
-  "7z": { icon: FileArchive, color: "text-yellow-600" },
-  tar:  { icon: FileArchive, color: "text-yellow-600" },
-  gz:   { icon: FileArchive, color: "text-yellow-600" },
-  md:   { icon: FileText, color: "text-gray-500" },
-  txt:  { icon: FileText, color: "text-gray-500" },
 };
 
 function getFileTypeInfo(filename: string): { icon: React.ElementType; color: string } {

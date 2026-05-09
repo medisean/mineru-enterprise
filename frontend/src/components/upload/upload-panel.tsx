@@ -31,18 +31,17 @@ interface UploadPanelProps {
 
 const ACCEPT_TYPES: Record<string, string[]> = {
   "application/pdf": [".pdf"],
-  "application/msword": [".doc"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-  "application/vnd.ms-powerpoint": [".ppt"],
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
+  "image/jp2": [".jp2"],
+  "image/jpeg2000": [".jp2"],
   "image/gif": [".gif"],
   "image/bmp": [".bmp"],
   "image/webp": [".webp"],
-  "image/jp2": [".jp2"],
-  "text/html": [".html"],
+  "image/tiff": [".tiff"],
 };
 
 const MAX_FILES = 100;
