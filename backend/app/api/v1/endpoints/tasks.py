@@ -21,6 +21,7 @@ from app.schemas.schemas import (
     TaskResultResponse, TaskResultFile,
 )
 from app.services.storage import storage_service
+from app.services.file_validation import validate_file_magic
 from app.workers.parse_worker import dispatch_parse_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -56,6 +57,22 @@ async def create_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Validate file content matches claimed extension (magic bytes check)
+    ext = payload.original_filename.rsplit(".", 1)[-1].lower() if "." in payload.original_filename else ""
+    if ext:
+        try:
+            head = storage_service.read_head_bytes(payload.s3_key, 32)
+            if head and not validate_file_magic(head, ext):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File content does not match the '.{ext}' extension. "
+                           f"The file may be corrupted or renamed with a wrong extension.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # If S3 read fails, skip validation (file may not be uploaded yet in edge cases)
+
     task = ParseTask(
         original_filename=payload.original_filename,
         file_size_bytes=payload.file_size_bytes,
@@ -68,6 +85,7 @@ async def create_task(
         enable_formula=payload.enable_formula,
         enable_table=payload.enable_table,
         page_ranges=payload.page_ranges,
+        data_id=payload.data_id,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
     )
@@ -392,6 +410,22 @@ async def batch_create_tasks(
     if len(payloads) > 200:
         raise HTTPException(status_code=400, detail="Maximum 200 tasks per batch")
 
+    # Validate file content for all payloads (magic bytes check)
+    for payload in payloads:
+        ext = payload.original_filename.rsplit(".", 1)[-1].lower() if "." in payload.original_filename else ""
+        if ext:
+            try:
+                head = storage_service.read_head_bytes(payload.s3_key, 32)
+                if head and not validate_file_magic(head, ext):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"File '{payload.original_filename}' content does not match the '.{ext}' extension.",
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
     created = []
     for payload in payloads:
         task = ParseTask(
@@ -406,43 +440,38 @@ async def batch_create_tasks(
             enable_formula=payload.enable_formula,
             enable_table=payload.enable_table,
             page_ranges=payload.page_ranges,
+            data_id=payload.data_id,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )
         db.add(task)
+        created.append(task)
+
+    # Flush to assign IDs without committing yet
+    await db.flush()
+
+    # Dispatch Celery tasks using the flushed task IDs
+    for task, payload in zip(created, payloads):
+        celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
+            "backend": payload.backend,
+            "output_format": payload.output_format or "markdown",
+            "language": payload.language or "",
+            "is_ocr": payload.is_ocr,
+            "enable_formula": payload.enable_formula,
+            "enable_table": payload.enable_table,
+            "page_ranges": payload.page_ranges,
+            "parse_options": payload.parse_options,
+        })
+        task.celery_task_id = celery_task_id
 
     await db.commit()
 
-    # Refresh all and dispatch Celery
-    for task_id, payload in zip([t.id for t in created] if created else [], payloads):
-        pass  # tasks are already in DB, we need to fetch them
-
-    # Re-query created tasks
+    # Refresh all tasks to get committed state
     all_tasks = []
-    for payload in payloads:
-        # Get the most recently created task for this file
-        q = select(ParseTask).where(
-            ParseTask.user_id == current_user.id,
-            ParseTask.original_filename == payload.original_filename,
-            ParseTask.input_s3_key == payload.s3_key,
-        ).order_by(ParseTask.created_at.desc()).limit(1)
-        result = await db.execute(q)
-        task = result.scalar_one_or_none()
-        if task:
-            celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
-                "backend": payload.backend,
-                "output_format": payload.output_format or "markdown",
-                "language": payload.language or "",
-                "is_ocr": payload.is_ocr,
-                "enable_formula": payload.enable_formula,
-                "enable_table": payload.enable_table,
-                "page_ranges": payload.page_ranges,
-                "parse_options": payload.parse_options,
-            })
-            task.celery_task_id = celery_task_id
-            all_tasks.append(task)
+    for task in created:
+        await db.refresh(task)
+        all_tasks.append(task)
 
-    await db.commit()
     return {"items": [TaskOut.model_validate(t) for t in all_tasks], "total": len(all_tasks)}
 
 

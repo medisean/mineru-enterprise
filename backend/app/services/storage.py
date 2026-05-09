@@ -86,6 +86,16 @@ class StorageService:
         response = self.client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"].read()
 
+    def read_head_bytes(self, key: str, num_bytes: int = 32) -> bytes:
+        """Read only the first N bytes of an object (for magic bytes validation)."""
+        try:
+            range_header = f"bytes=0-{num_bytes - 1}"
+            response = self.client.get_object(Bucket=self.bucket, Key=key, Range=range_header)
+            return response["Body"].read()
+        except ClientError as e:
+            logger.warning("Failed to read head bytes from S3", key=key, error=str(e))
+            return b""
+
     def delete_object(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)

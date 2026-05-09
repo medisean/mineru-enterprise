@@ -1,6 +1,8 @@
 """
 Application Settings — all values read from environment variables.
 """
+import sys
+import warnings
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,8 +22,29 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
+    def model_post_init(self, __context) -> None:
+        """Validate critical security settings after loading from env."""
+        if self.SECRET_KEY == "change-me-in-production" or self.SECRET_KEY == "change-me-to-a-random-secret-key-in-production":
+            warnings.warn(
+                "⚠️  SECRET_KEY is using the default value! "
+                "JWT tokens can be forged. Set a strong SECRET_KEY in your .env file.",
+                stacklevel=1,
+            )
+            if not self.DEBUG:
+                # In production (DEBUG=false), refuse to start with default SECRET_KEY
+                sys.exit(
+                    "FATAL: SECRET_KEY must be changed from the default value in production. "
+                    "Set a strong random SECRET_KEY in your .env file."
+                )
+        if not self.DEBUG and not self.ALLOWED_HOSTS:
+            warnings.warn(
+                "⚠️  ALLOWED_HOSTS is empty in production. "
+                "Host header injection is possible. Set ALLOWED_HOSTS in your .env file.",
+                stacklevel=1,
+            )
+
     # ── Hosts & CORS ──────────────────────────────────────────────────────
-    ALLOWED_HOSTS: List[str] = ["*"]
+    ALLOWED_HOSTS: List[str] = []  # Empty = allow all in dev; MUST set in production
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
     FRONTEND_URL: str = "http://localhost:3000"
 

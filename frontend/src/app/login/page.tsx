@@ -198,10 +198,11 @@ export default function LoginPage() {
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={8}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                   placeholder={t("login.regPasswordPlaceholder")}
                 />
+                <p className="mt-1 text-[10px] text-gray-400">{t("login.passwordHint")}</p>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">{t("login.fullNameLabel")}</label>

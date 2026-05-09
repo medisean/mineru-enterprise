@@ -54,6 +54,26 @@ class OIDCProvider:
 class LDAPAuthService:
     """LDAP / Active Directory authentication."""
 
+    @staticmethod
+    def _escape_ldap_filter(value: str) -> str:
+        """Escape special characters in LDAP filter values to prevent injection.
+
+        Per RFC 4515, the following characters must be escaped:
+        * \\  -> \\5c
+        * (  -> \\28
+        * )  -> \\29
+        * *  -> \\2a
+        * \\x00 (NUL) -> \\00
+        """
+        return (
+            value
+            .replace("\\", "\\5c")
+            .replace("(", "\\28")
+            .replace(")", "\\29")
+            .replace("*", "\\2a")
+            .replace("\x00", "\\00")
+        )
+
     def authenticate(self, username: str, password: str) -> Optional[dict]:
         if not settings.LDAP_ENABLED:
             return None
@@ -62,7 +82,8 @@ class LDAPAuthService:
             conn = ldap.initialize(settings.LDAP_SERVER)
             conn.simple_bind_s(settings.LDAP_BIND_DN, settings.LDAP_BIND_PASSWORD)
 
-            search_filter = settings.LDAP_USER_SEARCH_FILTER.format(username=username)
+            safe_username = self._escape_ldap_filter(username)
+            search_filter = settings.LDAP_USER_SEARCH_FILTER.format(username=safe_username)
             results = conn.search_s(
                 settings.LDAP_BASE_DN,
                 ldap.SCOPE_SUBTREE,

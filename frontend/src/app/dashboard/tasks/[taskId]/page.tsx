@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import DOMPurify from "dompurify";
 import { apiClient } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
@@ -426,7 +427,7 @@ export default function TaskDetailPage() {
               <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-table:text-sm prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded">
                 {preview?.markdown_content ? (
                   preview.format === "html" && !preview.markdown_content.includes("#") ? (
-                    <div dangerouslySetInnerHTML={{ __html: preview.markdown_content }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview.markdown_content, { USE_PROFILES: { html: true } }) }} />
                   ) : (
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {preview.markdown_content}

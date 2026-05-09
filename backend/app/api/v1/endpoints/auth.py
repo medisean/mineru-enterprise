@@ -2,6 +2,7 @@
 Auth endpoints: local login, SSO redirect/callback, token refresh.
 """
 import secrets
+import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -18,7 +19,32 @@ from app.services.sso import oidc_provider, wechat_work_oauth, dingtalk_oauth, l
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_SSO_STATES: dict[str, str] = {}  # state -> provider (in-memory, replace with Redis in production)
+# SSO state TTL in seconds (10 minutes)
+_SSO_STATE_TTL = 600
+
+
+def _get_redis():
+    """Get a Redis client for SSO state storage."""
+    import redis
+    return redis.from_url(settings.REDIS_URL)
+
+
+def _store_sso_state(state: str, provider: str):
+    """Store SSO state in Redis with TTL."""
+    r = _get_redis()
+    r.setex(f"sso_state:{state}", _SSO_STATE_TTL, provider)
+
+
+def _consume_sso_state(state: str) -> str | None:
+    """Consume and validate SSO state from Redis. Returns provider if valid, None otherwise."""
+    r = _get_redis()
+    key = f"sso_state:{state}"
+    provider = r.get(key)
+    if provider is None:
+        return None
+    # Delete after read (one-time use)
+    r.delete(key)
+    return provider.decode("utf-8") if isinstance(provider, bytes) else provider
 
 
 def _make_tokens(user: User) -> TokenResponse:
@@ -91,7 +117,7 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
 @router.get("/sso/{provider}/authorize")
 async def sso_authorize(provider: str):
     state = secrets.token_urlsafe(16)
-    _SSO_STATES[state] = provider
+    _store_sso_state(state, provider)
     redirect_uri = f"{settings.FRONTEND_URL}/api/auth/callback/{provider}"
 
     if provider == "oidc" and settings.OIDC_ENABLED and oidc_provider:
@@ -108,6 +134,13 @@ async def sso_authorize(provider: str):
 
 @router.post("/sso/callback", response_model=TokenResponse)
 async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(get_db)):
+    # Validate state to prevent CSRF
+    stored_provider = _consume_sso_state(payload.state)
+    if stored_provider is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired SSO state. Please retry the login flow.")
+    if stored_provider != payload.provider:
+        raise HTTPException(status_code=400, detail="SSO provider mismatch. Possible CSRF attack.")
+
     redirect_uri = f"{settings.FRONTEND_URL}/api/auth/callback/{payload.provider}"
 
     if payload.provider == "oidc" and oidc_provider:

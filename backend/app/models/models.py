@@ -109,6 +109,7 @@ class ParseTask(Base):
     enable_formula: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_table: Mapped[bool] = mapped_column(Boolean, default=True)
     page_ranges: Mapped[str] = mapped_column(String(128), nullable=True)
+    data_id: Mapped[str] = mapped_column(String(128), nullable=True)  # user-defined business ID
 
     # Status
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.PENDING, index=True)

@@ -35,7 +35,9 @@ app = FastAPI(
 
 if not settings.DEBUG:
     # Inner layer: validate Host header on real requests
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+    # Only add TrustedHostMiddleware if ALLOWED_HOSTS is explicitly configured
+    if settings.ALLOWED_HOSTS:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 # Outer layer: CORS — must wrap everything else to handle preflight
 app.add_middleware(

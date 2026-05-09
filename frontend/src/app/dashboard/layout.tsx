@@ -41,6 +41,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const wsRefs = useRef<Map<string, WebSocket>>(new Map());
+  const wsRetryRefs = useRef<Map<string, number>>(new Map()); // task_id -> retry count
   const t = useT();
 
   const [collapsed, setCollapsed] = useState(false);
@@ -60,7 +61,7 @@ export default function DashboardLayout({
 
   const recentTasks: RecentTask[] = recentData?.items ?? [];
 
-  // WebSocket for active recent tasks
+  // WebSocket for active recent tasks (with exponential backoff reconnect)
   useEffect(() => {
     if (!accessToken) return;
 
@@ -68,8 +69,8 @@ export default function DashboardLayout({
       (t) => t.status === "pending" || t.status === "processing"
     );
 
-    for (const task of activeTasks) {
-      if (wsRefs.current.has(task.id)) continue;
+    const connectWs = (task: RecentTask) => {
+      if (wsRefs.current.has(task.id)) return; // already connected
 
       const token = localStorage.getItem("access_token");
       const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace("http", "ws")}/api/v1/ws/tasks/${task.id}?token=${token}`;
@@ -79,9 +80,36 @@ export default function DashboardLayout({
       ws.onmessage = () => {
         queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
       };
+
       ws.onclose = () => {
         wsRefs.current.delete(task.id);
+        // Check if the task is still active before reconnecting
+        const retryCount = wsRetryRefs.current.get(task.id) || 0;
+        const maxRetries = 5;
+        if (retryCount < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 30000); // 1s, 2s, 4s, 8s, 16s, max 30s
+          wsRetryRefs.current.set(task.id, retryCount + 1);
+          setTimeout(() => {
+            // Only reconnect if the task still appears active
+            const stillActive = recentTasks.find(
+              (t) => t.id === task.id && (t.status === "pending" || t.status === "processing")
+            );
+            if (stillActive && !wsRefs.current.has(task.id)) {
+              connectWs(task);
+            }
+          }, delay);
+        }
       };
+
+      ws.onerror = () => {
+        // onclose will fire after onerror, which handles reconnect
+      };
+    };
+
+    for (const task of activeTasks) {
+      connectWs(task);
+      // Reset retry count on successful connect attempt
+      wsRetryRefs.current.delete(task.id);
     }
 
     // Clean up closed/completed task WS
@@ -90,6 +118,7 @@ export default function DashboardLayout({
       if (!stillActive) {
         ws.close();
         wsRefs.current.delete(id);
+        wsRetryRefs.current.delete(id);
       }
     }
   }, [recentTasks, queryClient, accessToken]);
@@ -101,6 +130,7 @@ export default function DashboardLayout({
         ws.close();
       }
       wsRefs.current.clear();
+      wsRetryRefs.current.clear();
     };
   }, []);
 

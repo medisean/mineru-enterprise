@@ -32,19 +32,28 @@ celery_app.conf.update(
 )
 
 
+# ── Reusable DB engine for Celery worker ─────────────────────────────────
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+_sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+_engine = create_engine(
+    _sync_db_url,
+    pool_size=5,
+    max_overflow=3,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
+_SessionFactory = sessionmaker(_engine)
+
+
 
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
     """Shared parsing logic used by both CPU and GPU task variants."""
     import subprocess, json, glob
 
-    # Sync DB connection for Celery worker
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.core.config import settings
-
-    sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
-    engine = create_engine(sync_db_url)
-    Session = sessionmaker(engine)
+    # Use the module-level engine/session factory (connection pool is reused)
+    Session = _SessionFactory
 
     def update_task_status(status, progress=None, error=None, output_prefix=None):
         with Session() as session:

@@ -81,7 +81,7 @@ def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
 
     return ExtractTaskResultData(
         task_id=task.id,
-        data_id=None,  # we don't store data_id yet
+        data_id=task.data_id,
         state=state,
         full_zip_url=full_zip_url,
         err_msg=task.error_message or "",
@@ -163,6 +163,7 @@ async def extract_task(
         enable_formula=payload.enable_formula,
         enable_table=payload.enable_table,
         page_ranges=payload.page_ranges,
+        data_id=payload.data_id,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
     )
@@ -260,6 +261,7 @@ async def batch_file_urls(
             enable_formula=payload.enable_formula,
             enable_table=payload.enable_table,
             page_ranges=f.page_ranges,
+            data_id=f.data_id,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )
@@ -340,6 +342,7 @@ async def batch_url_extract(
             enable_formula=payload.enable_formula,
             enable_table=payload.enable_table,
             page_ranges=f.page_ranges,
+            data_id=f.data_id,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )
@@ -403,7 +406,7 @@ async def batch_extract_results(
             state=result.state,
             full_zip_url=result.full_zip_url,
             err_msg=result.err_msg,
-            data_id=None,
+            data_id=task.data_id,
             extract_progress=result.extract_progress,
         ))
 

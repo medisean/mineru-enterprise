@@ -44,6 +44,18 @@ class UserCreate(BaseModel):
             raise ValueError("Username must be 3-32 chars, alphanumeric/underscore/hyphen only")
         return v
 
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v):
+        """Enforce password strength: ≥8 chars, at least 1 letter and 1 digit."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not re.search(r"[a-zA-Z]", v):
+            raise ValueError("Password must contain at least one letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
 
 class UserOut(BaseModel):
     id: str
@@ -84,7 +96,40 @@ class CreateTaskRequest(BaseModel):
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True
     page_ranges: Optional[str] = None      # e.g. "1-10" or "2,4-6"
-    parse_options: Optional[dict] = None   # extra MinerU CLI options
+    data_id: Optional[str] = None          # user-defined business ID, ≤128 chars
+    parse_options: Optional[dict] = None   # extra MinerU CLI options (whitelist-validated)
+
+    @field_validator("parse_options")
+    @classmethod
+    def validate_parse_options(cls, v):
+        if v is None:
+            return v
+        # Whitelist of allowed MinerU CLI option keys
+        ALLOWED_KEYS = {
+            "auto-detect-direction", "lang", "ocr", "formula", "table",
+            "output-format", "device", "backend", "pages", "formats",
+        }
+        for key in v:
+            # Reject keys not in whitelist
+            if key not in ALLOWED_KEYS:
+                raise ValueError(f"parse_options key '{key}' is not allowed. Allowed keys: {sorted(ALLOWED_KEYS)}")
+            # Reject keys containing shell metacharacters
+            if any(c in key for c in ";&|`$(){}[]<>!#\n\r\t"):
+                raise ValueError(f"parse_options key '{key}' contains invalid characters")
+            # Validate values — must be str, bool, int, or float
+            val = v[key]
+            if not isinstance(val, (str, bool, int, float, type(None))):
+                raise ValueError(f"parse_options['{key}'] must be a string, boolean, or number")
+            if isinstance(val, str) and any(c in val for c in ";&|`$(){}[]<>!\n\r"):
+                raise ValueError(f"parse_options['{key}'] value contains invalid characters")
+        return v
+
+    @field_validator("data_id")
+    @classmethod
+    def validate_data_id(cls, v):
+        if v is not None and len(v) > 128:
+            raise ValueError("data_id must be ≤128 characters")
+        return v
 
 
 class TaskOut(BaseModel):
@@ -95,6 +140,7 @@ class TaskOut(BaseModel):
     progress: int
     backend: str
     output_format: str
+    data_id: Optional[str] = None
     error_message: Optional[str]
     created_at: datetime
     started_at: Optional[datetime]
