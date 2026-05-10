@@ -215,4 +215,9 @@ export const en: Record<string, string> = {
   "admin.searchTasks": "Search filename, task ID, user...",
   "admin.clearSearch": "Clear search",
   "admin.noTasksMatched": "No matching task records",
+
+  // ── Roles ──────────────────────────────────────────────────────────
+  "role.superAdmin": "Super Admin",
+  "role.admin": "Admin",
+  "role.member": "Member",
 };

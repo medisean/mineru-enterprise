@@ -378,15 +378,15 @@ class AdminUserOut(BaseModel):
 
 
 class AdminUserUpdate(BaseModel):
-    role: Optional[str] = None            # admin | member | viewer
+    role: Optional[str] = None            # admin | member
     is_active: Optional[bool] = None
     organization_id: Optional[str] = None
 
     @field_validator("role")
     @classmethod
     def validate_role(cls, v):
-        if v is not None and v not in ("admin", "member", "viewer"):
-            raise ValueError("Role must be admin, member, or viewer")
+        if v is not None and v not in ("admin", "member"):
+            raise ValueError("Role must be admin or member")
         return v
 
 

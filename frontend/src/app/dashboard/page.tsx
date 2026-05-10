@@ -43,7 +43,7 @@ function DashboardContent() {
     <div className="p-8">
       <LanguageToggle />
       {tab === "upload" ? (
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">{t("dashboard.uploadTitle")}</h2>
           <p className="text-sm text-gray-500 mb-6">
             {t("dashboard.uploadDesc")}

@@ -83,8 +83,12 @@ async def list_users(
         count_query = count_query.where(filter_cond)
 
     if role:
-        query = query.where(User.role == role)
-        count_query = count_query.where(User.role == role)
+        if role == "super_admin":
+            query = query.where(User.is_superuser == True)
+            count_query = count_query.where(User.is_superuser == True)
+        else:
+            query = query.where(User.role == role, User.is_superuser == False)
+            count_query = count_query.where(User.role == role, User.is_superuser == False)
 
     total = (await db.execute(count_query)).scalar() or 0
 
@@ -176,6 +180,12 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if user.is_superuser:
+        if payload.role is not None:
+            raise HTTPException(status_code=400, detail="Cannot change super admin role")
+        if payload.is_active is False:
+            raise HTTPException(status_code=400, detail="Cannot disable super admin")
+
     # Prevent demoting the last admin
     if payload.role is not None and payload.role != "admin":
         if user.role == "admin" or user.is_superuser:
@@ -243,6 +253,11 @@ async def delete_user(
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if user.id == _admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    if user.is_superuser:
+        raise HTTPException(status_code=400, detail="Cannot delete super admin")
 
     # Prevent deleting the last admin
     if user.role == "admin" or user.is_superuser:

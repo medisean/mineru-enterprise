@@ -6,6 +6,8 @@ import { Search, Trash2, Shield, UserCheck, UserX } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { useT } from "@/lib/i18n/use-translation";
 
+const ROLE_OPTIONS = ["admin", "member"] as const;
+
 export default function AdminUsersPage() {
   const t = useT();
   const queryClient = useQueryClient();
@@ -38,9 +40,9 @@ export default function AdminUsersPage() {
   });
 
   const roleColor: Record<string, string> = {
+    super_admin: "bg-amber-100 text-amber-700",
     admin: "bg-red-100 text-red-700",
     member: "bg-blue-100 text-blue-700",
-    viewer: "bg-gray-100 text-gray-700",
   };
 
   const totalPages = data ? Math.ceil(data.total / pageSize) : 1;
@@ -70,9 +72,10 @@ export default function AdminUsersPage() {
           className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="">{t("admin.allRoles")}</option>
-          <option value="admin">Admin</option>
-          <option value="member">Member</option>
-          <option value="viewer">Viewer</option>
+          <option value="super_admin">{t("role.superAdmin")}</option>
+          {ROLE_OPTIONS.map((role) => (
+            <option key={role} value={role}>{t(`role.${role}`)}</option>
+          ))}
         </select>
       </div>
 
@@ -111,16 +114,22 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{u.email}</td>
                     <td className="px-4 py-3">
-                      <select
-                        value={u.role}
-                        onChange={(e) => updateMutation.mutate({ userId: u.id, data: { role: e.target.value } })}
-                        disabled={u.is_superuser}
-                        className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer ${roleColor[u.role] || "bg-gray-100"}`}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="member">Member</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
+                      {u.is_superuser ? (
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${roleColor.super_admin}`}>
+                          <Shield className="w-3 h-3" />
+                          {t("role.superAdmin")}
+                        </span>
+                      ) : (
+                        <select
+                          value={u.role === "viewer" ? "member" : u.role}
+                          onChange={(e) => updateMutation.mutate({ userId: u.id, data: { role: e.target.value } })}
+                          className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer ${roleColor[u.role] || roleColor.member}`}
+                        >
+                          {ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>{t(`role.${role}`)}</option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <button

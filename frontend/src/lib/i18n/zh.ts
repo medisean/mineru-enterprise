@@ -215,4 +215,9 @@ export const zh: Record<string, string> = {
   "admin.searchTasks": "搜索文件名、任务 ID、用户...",
   "admin.clearSearch": "清空搜索",
   "admin.noTasksMatched": "没有匹配的任务记录",
+
+  // ── Roles ──────────────────────────────────────────────────────────
+  "role.superAdmin": "超级管理员",
+  "role.admin": "管理员",
+  "role.member": "成员",
 };
