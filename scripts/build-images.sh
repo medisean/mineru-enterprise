@@ -24,6 +24,10 @@ TORCH_VERSION="${TORCH_VERSION:-2.7.0}"
 CUDA_VERSION="${CUDA_VERSION:-cu124}"
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
 NEXT_PUBLIC_APP_NAME="${NEXT_PUBLIC_APP_NAME:-MinerU Enterprise}"
+NEXT_PUBLIC_OIDC_ENABLED="${NEXT_PUBLIC_OIDC_ENABLED:-false}"
+NEXT_PUBLIC_OAUTH2_ENABLED="${NEXT_PUBLIC_OAUTH2_ENABLED:-false}"
+NEXT_PUBLIC_WECHAT_WORK_ENABLED="${NEXT_PUBLIC_WECHAT_WORK_ENABLED:-false}"
+NEXT_PUBLIC_DINGTALK_ENABLED="${NEXT_PUBLIC_DINGTALK_ENABLED:-false}"
 
 usage() {
   cat <<EOF
@@ -51,6 +55,10 @@ Environment:
   CUDA_VERSION        GPU worker CUDA wheel suffix. Default: cu124
   NEXT_PUBLIC_API_URL Frontend build-time API URL.
   NEXT_PUBLIC_APP_NAME Frontend build-time app name.
+  NEXT_PUBLIC_OIDC_ENABLED Frontend build-time OIDC button switch.
+  NEXT_PUBLIC_OAUTH2_ENABLED Frontend build-time OAuth2/IDaaS button switch.
+  NEXT_PUBLIC_WECHAT_WORK_ENABLED Frontend build-time WeChat Work button switch.
+  NEXT_PUBLIC_DINGTALK_ENABLED Frontend build-time DingTalk button switch.
 
 Examples:
   IMAGE_TAG=v1.0.0 $0 api
@@ -115,6 +123,10 @@ build_web() {
     --build-arg "NPM_REGISTRY=${NPM_REGISTRY}" \
     --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
     --build-arg "NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}" \
+    --build-arg "NEXT_PUBLIC_OIDC_ENABLED=${NEXT_PUBLIC_OIDC_ENABLED}" \
+    --build-arg "NEXT_PUBLIC_OAUTH2_ENABLED=${NEXT_PUBLIC_OAUTH2_ENABLED}" \
+    --build-arg "NEXT_PUBLIC_WECHAT_WORK_ENABLED=${NEXT_PUBLIC_WECHAT_WORK_ENABLED}" \
+    --build-arg "NEXT_PUBLIC_DINGTALK_ENABLED=${NEXT_PUBLIC_DINGTALK_ENABLED}" \
     -t "$image" \
     -f "$ROOT_DIR/frontend/Dockerfile" \
     "$ROOT_DIR/frontend"
