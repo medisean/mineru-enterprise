@@ -12,10 +12,8 @@ MinerU's in-process task manager.
 """
 import asyncio
 import base64
-import io
 import mimetypes
 import uuid
-import zipfile
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -29,6 +27,7 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.models import ParseTask, TaskStatus, User
 from app.services.file_validation import validate_file_magic
+from app.services.official_result_exports import build_result_zip_bytes
 from app.services.storage import storage_service
 from app.workers.parse_worker import dispatch_parse_task
 
@@ -257,17 +256,12 @@ def _build_results(task: ParseTask, *, return_md: bool, return_middle_json: bool
 
 
 def _build_zip(task: ParseTask, *, return_original_file: bool) -> bytes:
-    objects = storage_service.list_objects(task.output_s3_prefix or "")
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for obj in objects:
-            key = obj["key"]
-            arcname = key.replace((task.output_s3_prefix or "").rstrip("/") + "/", "", 1)
-            zf.writestr(arcname, storage_service.download_bytes(key))
-        if return_original_file:
-            zf.writestr(task.original_filename, storage_service.download_bytes(task.input_s3_key))
-    buf.seek(0)
-    return buf.read()
+    return build_result_zip_bytes(
+        storage_service,
+        task.output_s3_prefix or "",
+        original_key=task.input_s3_key if return_original_file else None,
+        original_filename=task.original_filename if return_original_file else None,
+    )
 
 
 async def _wait_for_task(task_id: str, db: AsyncSession, timeout_seconds: int = 3600) -> ParseTask:

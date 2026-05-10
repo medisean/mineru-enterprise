@@ -11,6 +11,11 @@ from datetime import datetime, timezone
 from celery import Celery
 
 from app.services.markdown_utils import convert_html_tables_to_markdown
+from app.services.official_result_exports import (
+    ensure_full_result_zip,
+    normalize_extra_formats,
+    render_extra_format_files,
+)
 
 from app.core.config import settings
 
@@ -154,6 +159,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         enable_table = config.get("enable_table", True)
         page_ranges = config.get("page_ranges")
         parse_options = config.get("parse_options") or {}
+        extra_formats = normalize_extra_formats(config.get("extra_formats"), config.get("output_format"))
         server_url = config.get("server_url") or parse_options.get("url") or parse_options.get("server-url")
         api_url = config.get("api_url") or parse_options.get("api-url")
         image_analysis = config.get("image_analysis", parse_options.get("image-analysis", True))
@@ -268,6 +274,12 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                         with open(fpath, "r", encoding="utf-8", errors="replace") as f:
                             raw = f.read()
                         converted = convert_html_tables_to_markdown(raw)
+                        for extra_path, extra_content_type in render_extra_format_files(converted, fpath, extra_formats):
+                            rel = os.path.relpath(extra_path, output_dir)
+                            extra_s3_key = f"{output_s3_prefix}/{rel}"
+                            with open(extra_path, "rb") as extra_file:
+                                storage_service.upload_bytes(extra_s3_key, extra_file.read(), extra_content_type)
+                            uploaded_files.append(extra_s3_key)
                         storage_service.upload_bytes(s3_key, converted.encode("utf-8"), content_type)
                     else:
                         with open(fpath, "rb") as f:
@@ -288,6 +300,10 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                         logger.info("Office→PDF preview generated", task_id=task_id)
                 except Exception as e:
                     logger.warning("Office→PDF conversion failed, skipping preview", task_id=task_id, error=str(e))
+
+            full_zip_key = ensure_full_result_zip(storage_service, output_s3_prefix)
+            if full_zip_key:
+                uploaded_files.append(full_zip_key)
 
         os.unlink(tmp_path)
         update_task_status("success", progress=100, output_prefix=output_s3_prefix)

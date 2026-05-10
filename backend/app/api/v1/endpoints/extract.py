@@ -33,12 +33,14 @@ from app.schemas.schemas import (
     BatchExtractResultData, BatchExtractResultItem,
 )
 from app.services.file_validation import validate_file_magic
+from app.services.official_result_exports import ensure_full_result_zip, normalize_extra_formats
 from app.services.storage import storage_service
 from app.workers.parse_worker import dispatch_parse_task
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v4", tags=["MinerU Precision API"])
+MAX_BATCH_FILES = 200
 
 CONTENT_TYPE_TO_EXTENSION = {
     "application/pdf": "pdf",
@@ -95,18 +97,11 @@ def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
     extract_progress = None
 
     if state == "done" and task.output_s3_prefix:
-        # Generate a zip download URL — find the zip file in output
-        objects = storage_service.list_objects(task.output_s3_prefix)
-        for obj in objects:
-            if obj["key"].endswith(".zip"):
-                full_zip_url = storage_service.generate_download_presigned_url(
-                    obj["key"], filename=obj["key"].split("/")[-1]
-                )
-                break
-        # If no zip, provide a folder-level download link
-        if not full_zip_url and objects:
+        zip_key = ensure_full_result_zip(storage_service, task.output_s3_prefix)
+        if zip_key:
             full_zip_url = storage_service.generate_download_presigned_url(
-                objects[0]["key"], filename=objects[0]["key"].split("/")[-1]
+                zip_key,
+                filename=f"{Path(task.original_filename).stem or task.id}.zip",
             )
 
     if state == "running":
@@ -128,6 +123,20 @@ def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
 
 def _trace_id() -> str:
     return uuid.uuid4().hex
+
+
+def _map_model_version(model_version: str | None) -> str:
+    backend = (model_version or "").strip()
+    if backend == "vlm":
+        return "vlm-auto-engine"
+    if backend == "hybrid":
+        return "hybrid-auto-engine"
+    return backend
+
+
+def _output_format_from_extra_formats(extra_formats: list[str] | None) -> str:
+    formats = normalize_extra_formats(extra_formats)
+    return ",".join(["markdown", *formats]) if formats else "markdown"
 
 
 def _dispatch_celery_task(task: ParseTask, config: dict):
@@ -227,15 +236,8 @@ async def extract_task(
         logger.error("Failed to download file from URL", url=payload.url, error=str(e))
         return {"code": -60008, "msg": "Failed to download file from URL", "trace_id": _trace_id(), "data": None}
 
-    # Map model_version → backend
-    backend = payload.model_version
-    if backend == "vlm":
-        backend = "vlm-transformers"
-
-    # Map extra_formats → output_format
-    output_format = "markdown"
-    if payload.extra_formats:
-        output_format = payload.extra_formats[0]  # primary extra format
+    backend = _map_model_version(payload.model_version)
+    output_format = _output_format_from_extra_formats(payload.extra_formats)
 
     task = ParseTask(
         original_filename=filename,
@@ -267,7 +269,7 @@ async def extract_task(
         "enable_formula": payload.enable_formula,
         "enable_table": payload.enable_table,
         "page_ranges": payload.page_ranges,
-        "extra_formats": payload.extra_formats,
+        "extra_formats": normalize_extra_formats(payload.extra_formats),
     }
     celery_id = _dispatch_celery_task(task, config)
     task.celery_task_id = celery_id
@@ -313,14 +315,14 @@ async def batch_file_urls(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get presigned upload URLs for batch file upload (≤50 files)."""
-    if len(payload.files) > 50:
-        return {"code": -500, "msg": "Maximum 50 files per batch", "trace_id": _trace_id(), "data": None}
+    """Get presigned upload URLs for batch file upload (≤200 files)."""
+    if len(payload.files) > MAX_BATCH_FILES:
+        return {"code": -500, "msg": f"Maximum {MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
     batch_id = str(uuid.uuid4())
-    backend = payload.model_version
-    if backend == "vlm":
-        backend = "vlm-transformers"
+    backend = _map_model_version(payload.model_version)
+    output_format = _output_format_from_extra_formats(payload.extra_formats)
+    created_tasks = []
 
     file_urls = []
     for f in payload.files:
@@ -331,11 +333,6 @@ async def batch_file_urls(
         s3_key = f"uploads/{current_user.id}/{uuid.uuid4()}/{f.name}"
         url = storage_service.generate_upload_presigned_url(s3_key, "application/octet-stream")
         file_urls.append(url)
-
-        # Create task in DB immediately (pending until file is uploaded)
-        output_format = "markdown"
-        if payload.extra_formats:
-            output_format = payload.extra_formats[0]
 
         task = ParseTask(
             original_filename=f.name,
@@ -352,20 +349,17 @@ async def batch_file_urls(
             data_id=f.data_id,
             callback_url=payload.callback,
             callback_seed=payload.seed,
+            batch_id=batch_id,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )
         db.add(task)
+        created_tasks.append(task)
 
     await db.commit()
 
-    # Dispatch Celery tasks for all created tasks
-    tasks_q = await db.execute(
-        select(ParseTask).where(ParseTask.user_id == current_user.id).order_by(ParseTask.created_at.desc()).limit(len(payload.files))
-    )
-    for task in tasks_q.scalars().all():
-        if task.celery_task_id:
-            continue
+    for task in created_tasks:
+        await db.refresh(task)
         config = {
             "backend": backend,
             "output_format": task.output_format,
@@ -374,7 +368,7 @@ async def batch_file_urls(
             "enable_formula": task.enable_formula,
             "enable_table": task.enable_table,
             "page_ranges": task.page_ranges,
-            "extra_formats": payload.extra_formats,
+            "extra_formats": normalize_extra_formats(payload.extra_formats),
         }
         celery_id = _dispatch_celery_task(task, config)
         task.celery_task_id = celery_id
@@ -401,13 +395,13 @@ async def batch_url_extract(
     db: AsyncSession = Depends(get_db),
 ):
     """Batch parse files by URLs (≤50 files)."""
-    if len(payload.files) > 50:
-        return {"code": -500, "msg": "Maximum 50 files per batch", "trace_id": _trace_id(), "data": None}
+    if len(payload.files) > MAX_BATCH_FILES:
+        return {"code": -500, "msg": f"Maximum {MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
     batch_id = str(uuid.uuid4())
-    backend = payload.model_version
-    if backend == "vlm":
-        backend = "vlm-transformers"
+    backend = _map_model_version(payload.model_version)
+    output_format = _output_format_from_extra_formats(payload.extra_formats)
+    created_tasks = []
 
     for f in payload.files:
         try:
@@ -418,10 +412,6 @@ async def batch_url_extract(
         except Exception as e:
             logger.error("Batch: failed to download URL", url=f.url, error=str(e))
             continue
-
-        output_format = "markdown"
-        if payload.extra_formats:
-            output_format = payload.extra_formats[0]
 
         task = ParseTask(
             original_filename=filename,
@@ -438,20 +428,17 @@ async def batch_url_extract(
             data_id=f.data_id,
             callback_url=payload.callback,
             callback_seed=payload.seed,
+            batch_id=batch_id,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )
         db.add(task)
+        created_tasks.append(task)
 
     await db.commit()
 
-    # Dispatch Celery for recently created tasks
-    tasks_q = await db.execute(
-        select(ParseTask).where(ParseTask.user_id == current_user.id).order_by(ParseTask.created_at.desc()).limit(len(payload.files))
-    )
-    for task in tasks_q.scalars().all():
-        if task.celery_task_id:
-            continue
+    for task in created_tasks:
+        await db.refresh(task)
         config = {
             "backend": backend,
             "output_format": task.output_format,
@@ -460,7 +447,7 @@ async def batch_url_extract(
             "enable_formula": task.enable_formula,
             "enable_table": task.enable_table,
             "page_ranges": task.page_ranges,
-            "extra_formats": payload.extra_formats,
+            "extra_formats": normalize_extra_formats(payload.extra_formats),
         }
         celery_id = _dispatch_celery_task(task, config)
         task.celery_task_id = celery_id
@@ -483,13 +470,11 @@ async def batch_extract_results(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get batch parse results. Returns all recent tasks for the user."""
-    # We don't store batch_id in the DB yet — return recent tasks
+    """Get batch parse results by batch_id."""
     tasks_q = await db.execute(
         select(ParseTask)
-        .where(ParseTask.user_id == current_user.id)
-        .order_by(ParseTask.created_at.desc())
-        .limit(50)
+        .where(ParseTask.user_id == current_user.id, ParseTask.batch_id == batch_id)
+        .order_by(ParseTask.created_at.asc())
     )
     tasks = tasks_q.scalars().all()
 

@@ -5,7 +5,7 @@ import uuid
 import enum
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Text, Integer, Boolean, DateTime, Enum, ForeignKey, BigInteger
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, Enum, ForeignKey, BigInteger, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -110,6 +110,7 @@ class ParseTask(Base):
     enable_table: Mapped[bool] = mapped_column(Boolean, default=True)
     page_ranges: Mapped[str] = mapped_column(String(128), nullable=True)
     data_id: Mapped[str] = mapped_column(String(128), nullable=True)  # user-defined business ID
+    batch_id: Mapped[str] = mapped_column(String(64), nullable=True, index=True)
 
     # Status
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.PENDING, index=True)
@@ -132,3 +133,6 @@ class ParseTask(Base):
     user: Mapped["User"] = relationship("User", back_populates="tasks")
     organization_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("organizations.id"), nullable=True)
     organization: Mapped[Optional["Organization"]] = relationship("Organization", back_populates="tasks")
+
+
+Index("ix_parse_tasks_user_batch", ParseTask.user_id, ParseTask.batch_id)
