@@ -10,7 +10,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 import {
-  LogOut, FileText, Plus, Loader2, ChevronLeft, ChevronRight,
+  LogOut, FileText, Plus, Loader2, PanelLeftClose, PanelLeftOpen,
   CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
   Shield, Users, Clock4,
 } from "lucide-react";
@@ -54,7 +54,7 @@ export default function DashboardLayout({
     queryKey: ["recent-tasks"],
     queryFn: () =>
       tasksApi
-        .list({ page: 1, page_size: 8 })
+        .list({ page: 1, page_size: 50 })
         .then((r: { data: { items: RecentTask[]; total: number } }) => r.data),
     enabled: !!accessToken,
     refetchInterval: 10000,
@@ -188,7 +188,7 @@ export default function DashboardLayout({
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
                 title={t("sidebar.collapse")}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <PanelLeftClose className="h-4 w-4" />
               </button>
             </>
           )}
@@ -202,7 +202,7 @@ export default function DashboardLayout({
                 className="w-full flex items-center justify-center p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 title={t("sidebar.expand")}
               >
-                <ChevronRight className="h-4 w-4" />
+                <PanelLeftOpen className="h-4 w-4" />
               </button>
             </div>
           )}

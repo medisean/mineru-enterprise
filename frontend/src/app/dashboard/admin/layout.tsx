@@ -31,5 +31,9 @@ export default function AdminLayout({
     );
   }
 
-  return <>{children}</>;
+  return (
+    <div className="p-8">
+      <div className="max-w-5xl mx-auto">{children}</div>
+    </div>
+  );
 }

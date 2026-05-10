@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText, Clock, CheckCircle2, XCircle, AlertCircle, Loader2, Search, X,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, FileSpreadsheet, FileImage, File,
 } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { useT } from "@/lib/i18n/use-translation";
@@ -21,6 +21,26 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = 
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 const PAGE_SIZE_STORAGE_KEY = "mineru.admin.tasks.pageSize";
+
+const FILE_TYPE_MAP: Record<string, { icon: React.ElementType; color: string }> = {
+  pdf:  { icon: FileText, color: "text-red-500" },
+  docx: { icon: FileText, color: "text-blue-500" },
+  pptx: { icon: File, color: "text-orange-500" },
+  xlsx: { icon: FileSpreadsheet, color: "text-green-600" },
+  png:  { icon: FileImage, color: "text-purple-500" },
+  jpg:  { icon: FileImage, color: "text-purple-500" },
+  jpeg: { icon: FileImage, color: "text-purple-500" },
+  jp2:  { icon: FileImage, color: "text-purple-500" },
+  gif:  { icon: FileImage, color: "text-purple-500" },
+  bmp:  { icon: FileImage, color: "text-purple-500" },
+  tiff: { icon: FileImage, color: "text-purple-500" },
+  webp: { icon: FileImage, color: "text-purple-500" },
+};
+
+function getFileTypeInfo(filename: string): { icon: React.ElementType; color: string } {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  return FILE_TYPE_MAP[ext] || { icon: FileText, color: "text-gray-400" };
+}
 
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null) return "-";
@@ -143,7 +163,7 @@ export default function AdminTasksPage() {
     }`;
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <h1 className="text-lg font-semibold text-gray-900 whitespace-nowrap">
           {t("admin.taskHistory")}
@@ -263,11 +283,12 @@ export default function AdminTasksPage() {
                   error_message?: string;
                 }) => {
                   const cfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
+                  const { icon: FileIcon, color: iconColor } = getFileTypeInfo(task.original_filename);
                   return (
                     <tr key={task.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <FileIcon className={`w-4 h-4 flex-shrink-0 ${iconColor}`} />
                           <div className="min-w-0">
                             <p className="text-sm text-gray-800 truncate max-w-[280px]">{task.original_filename}</p>
                             {task.status === "failed" && task.error_message && (

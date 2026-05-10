@@ -46,7 +46,7 @@ export default function AdminUsersPage() {
   const totalPages = data ? Math.ceil(data.total / pageSize) : 1;
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{t("admin.userManagement")}</h1>
         <span className="text-sm text-gray-500">{t("admin.total")}: {data?.total ?? 0}</span>
