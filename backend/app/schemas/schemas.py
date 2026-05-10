@@ -101,6 +101,8 @@ class CreateTaskRequest(BaseModel):
     page_ranges: Optional[str] = None      # e.g. "1-10" or "2,4-6"
     data_id: Optional[str] = None          # user-defined business ID, ≤128 chars
     parse_options: Optional[dict] = None   # extra MinerU CLI options (whitelist-validated)
+    callback_url: Optional[str] = None     # webhook URL to POST on task completion
+    callback_seed: Optional[str] = None    # HMAC signature seed for webhook verification
 
     @field_validator("parse_options")
     @classmethod
@@ -144,6 +146,7 @@ class TaskOut(BaseModel):
     backend: str
     output_format: str
     data_id: Optional[str] = None
+    callback_url: Optional[str] = None
     error_message: Optional[str]
     created_at: datetime
     started_at: Optional[datetime]

@@ -250,6 +250,8 @@ async def extract_task(
         enable_table=payload.enable_table,
         page_ranges=payload.page_ranges,
         data_id=payload.data_id,
+        callback_url=payload.callback,
+        callback_seed=payload.seed,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
     )
@@ -348,6 +350,8 @@ async def batch_file_urls(
             enable_table=payload.enable_table,
             page_ranges=f.page_ranges,
             data_id=f.data_id,
+            callback_url=payload.callback,
+            callback_seed=payload.seed,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )
@@ -432,6 +436,8 @@ async def batch_url_extract(
             enable_table=payload.enable_table,
             page_ranges=f.page_ranges,
             data_id=f.data_id,
+            callback_url=payload.callback,
+            callback_seed=payload.seed,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )

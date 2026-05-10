@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_PER_MINUTE: int = 60
 
+    # ── Webhook ───────────────────────────────────────────────────────────
+    WEBHOOK_ENABLED: bool = True                    # master switch for outbound webhooks
+    WEBHOOK_TIMEOUT_SECONDS: int = 10               # HTTP timeout per callback attempt
+    WEBHOOK_MAX_RETRIES: int = 3                    # max retry attempts (exponential backoff)
+    WEBHOOK_SECRET: str = ""                        # global HMAC key (if empty, per-task seed used)
+
     # ── File Limits ───────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 200
     ALLOWED_EXTENSIONS: List[str] = [

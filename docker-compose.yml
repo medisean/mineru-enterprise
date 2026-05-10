@@ -189,6 +189,26 @@ services:
               capabilities: [gpu]
     profiles: ["gpu"]
 
+  # ── Celery Worker — Webhook delivery ─────────────────────────────────────────
+  worker-webhook:
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/api:${IMAGE_TAG:-latest}
+    build: *backend-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mineru}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/1"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/2"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: celery -A app.workers.parse_worker.celery_app worker -Q webhook -c 4 --loglevel=info
+
   # ── Flower (Celery monitoring, optional) ────────────────────────────────────
   flower:
     image: ${IMAGE_REPOSITORY:-mineru-enterprise}/api:${IMAGE_TAG:-latest}

@@ -28,6 +28,7 @@ celery_app.conf.update(
     task_routes={
         "app.workers.parse_worker.parse_document_cpu": {"queue": "parse_cpu"},
         "app.workers.parse_worker.parse_document_gpu": {"queue": "parse_gpu"},
+        "app.workers.webhook_worker.deliver_webhook": {"queue": "webhook"},
     },
 )
 
@@ -72,6 +73,25 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 elif status in ("success", "failed"):
                     task.completed_at = datetime.now(timezone.utc)
                 session.commit()
+
+                # Fire webhook callback on terminal states
+                if status in ("success", "failed") and task.callback_url:
+                    try:
+                        from app.workers.webhook_worker import dispatch_webhook
+                        dispatch_webhook(
+                            task_id=task_id,
+                            callback_url=task.callback_url,
+                            callback_seed=task.callback_seed or "",
+                            status=status,
+                            data_id=task.data_id,
+                            progress=task.progress,
+                            error_message=task.error_message,
+                            output_s3_prefix=task.output_s3_prefix,
+                            created_at=task.created_at.isoformat() if task.created_at else None,
+                            completed_at=task.completed_at.isoformat() if task.completed_at else None,
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to dispatch webhook", task_id=task_id, error=str(e))
 
     try:
         update_task_status("processing", progress=5)

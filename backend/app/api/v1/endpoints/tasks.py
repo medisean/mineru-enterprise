@@ -88,6 +88,8 @@ async def create_task(
         enable_table=payload.enable_table,
         page_ranges=payload.page_ranges,
         data_id=payload.data_id,
+        callback_url=payload.callback_url,
+        callback_seed=payload.callback_seed,
         user_id=current_user.id,
         organization_id=current_user.organization_id,
     )
@@ -445,6 +447,8 @@ async def batch_create_tasks(
             enable_table=payload.enable_table,
             page_ranges=payload.page_ranges,
             data_id=payload.data_id,
+            callback_url=payload.callback_url,
+            callback_seed=payload.callback_seed,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
         )

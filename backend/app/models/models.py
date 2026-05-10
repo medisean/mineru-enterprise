@@ -116,6 +116,10 @@ class ParseTask(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
 
+    # Webhook callback
+    callback_url: Mapped[str] = mapped_column(String(1024), nullable=True)       # URL to POST on completion
+    callback_seed: Mapped[str] = mapped_column(String(128), nullable=True)       # HMAC seed for signature
+
     # Timing
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -126,4 +130,3 @@ class ParseTask(Base):
     user: Mapped["User"] = relationship("User", back_populates="tasks")
     organization_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("organizations.id"), nullable=True)
     organization: Mapped[Optional["Organization"]] = relationship("Organization", back_populates="tasks")
-from typing import Optional
