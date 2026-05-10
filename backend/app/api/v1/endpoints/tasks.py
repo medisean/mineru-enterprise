@@ -519,6 +519,13 @@ async def get_task_preview(
     if not markdown_content and html_content:
         markdown_content = html_content
 
+    # Post-process: convert HTML tables to Markdown tables
+    # MinerU office backend outputs raw HTML tables in .md files;
+    # converting them makes the right panel render cleanly.
+    if markdown_content:
+        from app.services.markdown_utils import convert_html_tables_to_markdown
+        markdown_content = convert_html_tables_to_markdown(markdown_content)
+
     # Determine primary format for backwards compat
     if markdown_content:
         primary_format = "html" if html_content and not any(k.endswith(".md") for k in [o["key"] for o in objects]) else "markdown"

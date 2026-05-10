@@ -8,6 +8,8 @@ import structlog
 from datetime import datetime, timezone
 from celery import Celery
 
+from app.services.markdown_utils import convert_html_tables_to_markdown
+
 from app.core.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -214,10 +216,19 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                     fpath = os.path.join(root, fname)
                     rel = os.path.relpath(fpath, output_dir)
                     s3_key = f"{output_s3_prefix}/{rel}"
-                    with open(fpath, "rb") as f:
-                        content_type = _guess_content_type(fname)
-                        storage_service.upload_bytes(s3_key, f.read(), content_type)
-                        uploaded_files.append(s3_key)
+                    content_type = _guess_content_type(fname)
+
+                    # Post-process .md files: convert HTML tables to Markdown tables
+                    # MinerU outputs raw HTML tables in Markdown for all backends
+                    if fname.endswith(".md"):
+                        with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                            raw = f.read()
+                        converted = convert_html_tables_to_markdown(raw)
+                        storage_service.upload_bytes(s3_key, converted.encode("utf-8"), content_type)
+                    else:
+                        with open(fpath, "rb") as f:
+                            storage_service.upload_bytes(s3_key, f.read(), content_type)
+                    uploaded_files.append(s3_key)
 
             # Convert Office source files (PPTX/DOCX/XLSX) to PDF for preview
             office_ext = _get_office_extension(input_s3_key)
