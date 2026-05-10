@@ -261,7 +261,7 @@ class BatchFileItem(BaseModel):
 
 class BatchFileUrlsRequest(BaseModel):
     """POST /api/v4/file-urls/batch — get presigned upload URLs for batch"""
-    files: List[BatchFileItem]                        # ≤50 items
+    files: List[BatchFileItem]                        # ≤100 items by default
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True
     language: Optional[str] = "ch"
@@ -288,7 +288,7 @@ class BatchUrlFileItem(BaseModel):
 
 class BatchUrlExtractRequest(BaseModel):
     """POST /api/v4/extract/task/batch — batch parse by URLs"""
-    files: List[BatchUrlFileItem]                     # ≤50 items
+    files: List[BatchUrlFileItem]                     # ≤100 items by default
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True
     language: Optional[str] = "ch"

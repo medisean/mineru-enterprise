@@ -466,9 +466,9 @@ async def batch_get_upload_urls(
     payloads: List[PresignedUploadRequest],
     current_user: User = Depends(get_current_user),
 ):
-    """Get presigned upload URLs for up to 50 files at once (mirrors MinerU batch API)."""
-    if len(payloads) > 50:
-        raise HTTPException(status_code=400, detail="Maximum 50 files per batch upload")
+    """Get presigned upload URLs for up to MAX_BATCH_FILES files at once."""
+    if len(payloads) > settings.MAX_BATCH_FILES:
+        raise HTTPException(status_code=400, detail=f"Maximum {settings.MAX_BATCH_FILES} files per batch upload")
 
     results = []
     for p in payloads:
@@ -497,9 +497,9 @@ async def batch_create_tasks(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create multiple parse tasks at once (up to 200 files, matching MinerU API limits)."""
-    if len(payloads) > 200:
-        raise HTTPException(status_code=400, detail="Maximum 200 tasks per batch")
+    """Create multiple parse tasks at once."""
+    if len(payloads) > settings.MAX_BATCH_FILES:
+        raise HTTPException(status_code=400, detail=f"Maximum {settings.MAX_BATCH_FILES} tasks per batch")
 
     # Validate file content for all payloads (magic bytes check)
     for payload in payloads:

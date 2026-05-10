@@ -65,7 +65,7 @@ export const en: Record<string, string> = {
   "upload.pageRanges": "Page Ranges",
   "upload.pageRangesPlaceholder": "e.g. 1-10 or 2,4-6",
   "upload.submitButton": "Upload & Parse {count} file(s)",
-  "upload.maxFilesHint": "Maximum {max} files per upload",
+  "upload.maxFilesHint": "Maximum {max} files per upload, {pages} pages per file",
   "upload.engineAuto": "Auto (Recommended)",
   "upload.enginePipeline": "Pipeline (Traditional)",
   "upload.engineHybrid": "Hybrid (Mixed Engine)",

@@ -134,7 +134,8 @@ class Settings(BaseSettings):
     TASK_WATCHDOG_INTERVAL_SECONDS: int = 60
 
     # ── File Limits ───────────────────────────────────────────────────────
-    MAX_UPLOAD_SIZE_MB: int = 200
+    MAX_UPLOAD_SIZE_MB: int = 50
+    MAX_BATCH_FILES: int = 100
     ALLOWED_EXTENSIONS: List[str] = [
         "pdf",
         "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff",

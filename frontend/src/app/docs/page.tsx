@@ -94,8 +94,8 @@ const apiGroups = [
       ["POST", "/api/v1/tasks/{task_id}/retry", "重新解析失败或已停止任务"],
       ["POST", "/api/v1/tasks/{task_id}/cancel", "停止等待中或解析中的任务"],
       ["DELETE", "/api/v1/tasks/{task_id}", "删除任务记录"],
-      ["POST", "/api/v1/tasks/batch/upload-urls", "批量获取上传地址"],
-      ["POST", "/api/v1/tasks/batch/tasks", "批量创建解析任务"],
+      ["POST", "/api/v1/tasks/batch/upload-urls", "批量获取上传地址，单次最多 100 个文件"],
+      ["POST", "/api/v1/tasks/batch/tasks", "批量创建解析任务，单次最多 100 个文件"],
       ["POST", "/api/v1/tasks/batch/download", "批量导出结果 ZIP"],
     ],
   },
@@ -104,8 +104,8 @@ const apiGroups = [
     rows: [
       ["POST", "/api/v4/extract/task", "按 URL 创建单文件解析任务"],
       ["GET", "/api/v4/extract/task/{task_id}", "查询官方兼容任务结果"],
-      ["POST", "/api/v4/file-urls/batch", "批量获取官方兼容上传地址"],
-      ["POST", "/api/v4/extract/task/batch", "批量 URL 解析"],
+      ["POST", "/api/v4/file-urls/batch", "批量获取官方兼容上传地址，单次最多 100 个文件"],
+      ["POST", "/api/v4/extract/task/batch", "批量 URL 解析，单次最多 100 个文件"],
       ["GET", "/api/v4/extract-results/batch/{batch_id}", "查询批量解析结果"],
       ["POST", "/tasks", "简化官方兼容任务提交"],
       ["GET", "/tasks/{task_id}", "简化官方兼容任务状态"],
@@ -238,7 +238,7 @@ export default function DocsPage() {
               ))}
             </div>
             <p className="text-xs leading-5 text-gray-400">
-              Office 文件会先转换后解析；生产 GPU 模式建议只启用 GPU worker，并确保离线模型已打入镜像。
+              单次最多 100 个文件，单文件最大 300 页。Office 文件会先转换后解析；生产 GPU 模式建议只启用 GPU worker。
             </p>
           </div>
         </section>

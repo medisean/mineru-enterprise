@@ -6,7 +6,7 @@
 - **丰富解析参数**：OCR 开关、公式识别、表格识别、页码范围、10+ 语言、3 种解析引擎
 - **多种输出格式**：Markdown / JSON / DOCX / HTML / LaTeX
 - **在线预览**：Markdown 渲染预览 + 一键复制 + 文件下载
-- **批量处理**：支持批量上传、批量创建任务（单次最多 200 个）
+- **批量处理**：支持批量上传、批量创建任务（单次最多 100 个）
 - **单点登录（SSO）**：OIDC / LDAP / 企业微信 / 钉钉
 - **文件直传 S3**：AWS S3 / MinIO / 阿里云 OSS / 腾讯云 COS
 - **异步任务队列**：Celery + Redis，WebSocket 实时进度推送
@@ -23,7 +23,7 @@
 | 解析引擎 | pipeline / vlm / MinerU-HTML | 同官方 |
 | 解析参数 | OCR / 公式 / 表格 / 页码范围 / 语言 | 同官方，全部对齐 |
 | 输出格式 | Markdown / JSON / DOCX / HTML / LaTeX | 同官方 |
-| 批量处理 | 最多 200 个 | 同官方 |
+| 批量处理 | 最多 100 个 | 同官方 |
 | 在线预览 | CDN Markdown | 自托管 Markdown/HTML/JSON 预览 |
 | 认证方式 | Token | **OIDC / LDAP / 企微 / 钉钉 + 本地** |
 | 文件存储 | 官方 CDN | **S3 / MinIO / OSS / COS 自托管** |
@@ -300,8 +300,8 @@ mineru-enterprise/
 | GET | `/api/v1/tasks/{id}/results` | 获取下载链接 |
 | GET | `/api/v1/tasks/{id}/preview` | **在线预览内容** |
 | DELETE | `/api/v1/tasks/{id}` | 取消任务 |
-| POST | `/api/v1/tasks/batch/upload-urls` | **批量预签名 URL（≤50）** |
-| POST | `/api/v1/tasks/batch/tasks` | **批量创建任务（≤200）** |
+| POST | `/api/v1/tasks/batch/upload-urls` | **批量预签名 URL（≤100）** |
+| POST | `/api/v1/tasks/batch/tasks` | **批量创建任务（≤100）** |
 
 ### MinerU 官方兼容 API
 

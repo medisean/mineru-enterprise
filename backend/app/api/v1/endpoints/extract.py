@@ -40,7 +40,6 @@ from app.workers.parse_worker import dispatch_parse_task
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v4", tags=["MinerU Precision API"])
-MAX_BATCH_FILES = 200
 
 CONTENT_TYPE_TO_EXTENSION = {
     "application/pdf": "pdf",
@@ -315,9 +314,9 @@ async def batch_file_urls(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get presigned upload URLs for batch file upload (≤200 files)."""
-    if len(payload.files) > MAX_BATCH_FILES:
-        return {"code": -500, "msg": f"Maximum {MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
+    """Get presigned upload URLs for batch file upload."""
+    if len(payload.files) > settings.MAX_BATCH_FILES:
+        return {"code": -500, "msg": f"Maximum {settings.MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
     batch_id = str(uuid.uuid4())
     backend = _map_model_version(payload.model_version)
@@ -394,9 +393,9 @@ async def batch_url_extract(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Batch parse files by URLs (≤50 files)."""
-    if len(payload.files) > MAX_BATCH_FILES:
-        return {"code": -500, "msg": f"Maximum {MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
+    """Batch parse files by URLs."""
+    if len(payload.files) > settings.MAX_BATCH_FILES:
+        return {"code": -500, "msg": f"Maximum {settings.MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
     batch_id = str(uuid.uuid4())
     backend = _map_model_version(payload.model_version)

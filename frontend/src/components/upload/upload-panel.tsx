@@ -45,6 +45,8 @@ const ACCEPT_TYPES: Record<string, string[]> = {
 };
 
 const MAX_FILES = 100;
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_PAGES = 300;
 
 export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -79,7 +81,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ACCEPT_TYPES,
-    maxSize: 200 * 1024 * 1024,
+    maxSize: MAX_FILE_SIZE_MB * 1024 * 1024,
     maxFiles: MAX_FILES,
   });
 
@@ -162,7 +164,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
           {t("upload.supportFormats")}
         </p>
         <p className="text-xs text-gray-300 mt-0.5">
-          {t("upload.maxFilesHint", { max: MAX_FILES })}
+          {t("upload.maxFilesHint", { max: MAX_FILES, pages: MAX_FILE_PAGES })}
         </p>
       </div>
 
