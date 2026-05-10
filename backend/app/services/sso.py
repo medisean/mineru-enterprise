@@ -51,6 +51,48 @@ class OIDCProvider:
             return userinfo.json()
 
 
+class OAuth2Provider:
+    """Generic OAuth2 provider for Huawei IDaaS and similar corporate IdPs."""
+
+    def __init__(self):
+        self.authorization_url = settings.OAUTH2_AUTHORIZATION_URL
+        self.token_url = settings.OAUTH2_TOKEN_URL
+        self.userinfo_url = settings.OAUTH2_USERINFO_URL
+        self.client_id = settings.OAUTH2_CLIENT_ID
+        self.client_secret = settings.OAUTH2_CLIENT_SECRET
+
+    def get_authorization_url(self, redirect_uri: str, state: str) -> str:
+        client = AsyncOAuth2Client(
+            client_id=self.client_id,
+            redirect_uri=redirect_uri,
+            scope=settings.OAUTH2_SCOPE,
+        )
+        url, _ = client.create_authorization_url(self.authorization_url, state=state)
+        return url
+
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
+        async with AsyncOAuth2Client(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            redirect_uri=redirect_uri,
+            token_endpoint_auth_method=settings.OAUTH2_TOKEN_AUTH_METHOD,
+        ) as client:
+            token = await client.fetch_token(self.token_url, code=code)
+            userinfo = await client.get(
+                self.userinfo_url,
+                headers={"Authorization": f"Bearer {token.get('access_token')}"},
+            )
+            data = userinfo.json()
+            subject = data.get(settings.OAUTH2_USER_ID_FIELD) or data.get("sub") or data.get("id")
+            email = data.get(settings.OAUTH2_EMAIL_FIELD) or data.get("email") or ""
+            return {
+                "sso_subject": subject,
+                "email": email or f"{subject}@oauth2.local",
+                "full_name": data.get(settings.OAUTH2_NAME_FIELD) or data.get("name") or email or str(subject),
+                "avatar_url": data.get(settings.OAUTH2_AVATAR_FIELD) or data.get("picture"),
+            }
+
+
 class LDAPAuthService:
     """LDAP / Active Directory authentication."""
 
@@ -206,6 +248,7 @@ class DingTalkOAuth:
 
 # Singleton instances
 oidc_provider = OIDCProvider() if settings.OIDC_ENABLED else None
+oauth2_provider = OAuth2Provider() if settings.OAUTH2_ENABLED else None
 ldap_service = LDAPAuthService()
 wechat_work_oauth = WeChatWorkOAuth() if settings.WECHAT_WORK_ENABLED else None
 dingtalk_oauth = DingTalkOAuth() if settings.DINGTALK_ENABLED else None

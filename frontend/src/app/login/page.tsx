@@ -3,23 +3,25 @@
  * Login page — supports local login and SSO buttons.
  * Enhanced with registration toggle and improved UX.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { authApi } from "@/lib/api";
+import { startSSOLogin } from "@/lib/sso";
 import { Loader2, FileText } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
 const SSO_PROVIDERS = [
   { id: "oidc", labelKey: "login.ssoOidc", enabled: process.env.NEXT_PUBLIC_OIDC_ENABLED === "true" },
+  { id: "oauth2", labelKey: "login.ssoOAuth2", enabled: process.env.NEXT_PUBLIC_OAUTH2_ENABLED === "true" },
   { id: "wechat_work", labelKey: "login.ssoWechatWork", enabled: process.env.NEXT_PUBLIC_WECHAT_WORK_ENABLED === "true" },
   { id: "dingtalk", labelKey: "login.ssoDingtalk", enabled: process.env.NEXT_PUBLIC_DINGTALK_ENABLED === "true" },
 ];
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuthStore();
+  const { accessToken, hasHydrated, login } = useAuthStore();
   const t = useT();
   const [isRegister, setIsRegister] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +36,12 @@ export default function LoginPage() {
   const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regFullName, setRegFullName] = useState("");
+
+  useEffect(() => {
+    if (hasHydrated && accessToken) {
+      router.replace("/dashboard");
+    }
+  }, [accessToken, hasHydrated, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,12 +94,7 @@ export default function LoginPage() {
 
   const handleSSO = async (provider: string) => {
     try {
-      const res = await authApi.getSSOAuthUrl(provider);
-      // Redirect to SSO provider with callback URL
-      const callbackUrl = `${window.location.origin}/auth/callback?provider=${provider}`;
-      const authUrl = res.data.authorization_url
-        .replace(/redirect_uri=[^&]+/, `redirect_uri=${encodeURIComponent(callbackUrl)}`);
-      window.location.href = authUrl;
+      await startSSOLogin(provider);
     } catch {
       setError(t("login.ssoRedirectFailed"));
     }

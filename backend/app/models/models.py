@@ -19,6 +19,7 @@ def utcnow():
 class SSOProvider(str, enum.Enum):
     LOCAL = "local"
     OIDC = "oidc"
+    OAUTH2 = "oauth2"
     LDAP = "ldap"
     WECHAT_WORK = "wechat_work"
     DINGTALK = "dingtalk"

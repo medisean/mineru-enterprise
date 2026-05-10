@@ -55,6 +55,8 @@ export const authApi = {
     apiClient.post("/auth/register", data),
   refresh: (refreshToken: string) =>
     apiClient.post("/auth/refresh", { refresh_token: refreshToken }),
+  getSSOConfig: () =>
+    apiClient.get("/auth/sso/config"),
   getSSOAuthUrl: (provider: string) =>
     apiClient.get(`/auth/sso/${provider}/authorize`),
   ssoCallback: (provider: string, code: string, state: string) =>

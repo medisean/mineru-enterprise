@@ -15,7 +15,7 @@ from app.core.security import (
 from app.core.config import settings
 from app.models.models import User, SSOProvider
 from app.schemas.schemas import LoginRequest, TokenResponse, RefreshRequest, UserCreate, UserOut, SSOCallbackRequest
-from app.services.sso import oidc_provider, wechat_work_oauth, dingtalk_oauth, ldap_service
+from app.services.sso import oidc_provider, oauth2_provider, wechat_work_oauth, dingtalk_oauth, ldap_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -52,6 +52,19 @@ def _make_tokens(user: User) -> TokenResponse:
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+def _frontend_callback_uri(provider: str) -> str:
+    return f"{settings.FRONTEND_URL}/auth/callback?provider={provider}"
+
+
+def _provider_enabled(provider: str) -> bool:
+    return (
+        (provider == "oidc" and settings.OIDC_ENABLED and oidc_provider)
+        or (provider == "oauth2" and settings.OAUTH2_ENABLED and oauth2_provider)
+        or (provider == "wechat_work" and settings.WECHAT_WORK_ENABLED and wechat_work_oauth)
+        or (provider == "dingtalk" and settings.DINGTALK_ENABLED and dingtalk_oauth)
     )
 
 
@@ -114,14 +127,34 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
 
 
 # ── SSO redirect ──────────────────────────────────────────────────────────────
+@router.get("/sso/config")
+async def sso_config():
+    provider = settings.SSO_DEFAULT_PROVIDER
+    return {
+        "auto_login_enabled": settings.SSO_AUTO_LOGIN_ENABLED and _provider_enabled(provider),
+        "default_provider": provider,
+        "providers": {
+            "oidc": settings.OIDC_ENABLED and oidc_provider is not None,
+            "oauth2": settings.OAUTH2_ENABLED and oauth2_provider is not None,
+            "wechat_work": settings.WECHAT_WORK_ENABLED and wechat_work_oauth is not None,
+            "dingtalk": settings.DINGTALK_ENABLED and dingtalk_oauth is not None,
+        },
+    }
+
+
 @router.get("/sso/{provider}/authorize")
 async def sso_authorize(provider: str):
+    if not _provider_enabled(provider):
+        raise HTTPException(status_code=400, detail=f"SSO provider '{provider}' not enabled")
+
     state = secrets.token_urlsafe(16)
     _store_sso_state(state, provider)
-    redirect_uri = f"{settings.FRONTEND_URL}/api/auth/callback/{provider}"
+    redirect_uri = _frontend_callback_uri(provider)
 
     if provider == "oidc" and settings.OIDC_ENABLED and oidc_provider:
         url = await oidc_provider.get_authorization_url(redirect_uri, state)
+    elif provider == "oauth2" and settings.OAUTH2_ENABLED and oauth2_provider:
+        url = oauth2_provider.get_authorization_url(redirect_uri, state)
     elif provider == "wechat_work" and settings.WECHAT_WORK_ENABLED and wechat_work_oauth:
         url = wechat_work_oauth.get_authorization_url(redirect_uri, state)
     elif provider == "dingtalk" and settings.DINGTALK_ENABLED and dingtalk_oauth:
@@ -141,11 +174,14 @@ async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(g
     if stored_provider != payload.provider:
         raise HTTPException(status_code=400, detail="SSO provider mismatch. Possible CSRF attack.")
 
-    redirect_uri = f"{settings.FRONTEND_URL}/api/auth/callback/{payload.provider}"
+    redirect_uri = _frontend_callback_uri(payload.provider)
 
     if payload.provider == "oidc" and oidc_provider:
         user_info = await oidc_provider.exchange_code(payload.code, redirect_uri)
         sso_provider = SSOProvider.OIDC
+    elif payload.provider == "oauth2" and oauth2_provider:
+        user_info = await oauth2_provider.exchange_code(payload.code, redirect_uri)
+        sso_provider = SSOProvider.OAUTH2
     elif payload.provider == "wechat_work" and wechat_work_oauth:
         user_info = await wechat_work_oauth.get_user_info(payload.code)
         sso_provider = SSOProvider.WECHAT_WORK

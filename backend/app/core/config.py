@@ -73,11 +73,28 @@ class Settings(BaseSettings):
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
 
     # ── SSO — Generic OIDC ────────────────────────────────────────────────
+    SSO_AUTO_LOGIN_ENABLED: bool = False
+    SSO_DEFAULT_PROVIDER: str = "oidc"
+
     OIDC_ENABLED: bool = False
     OIDC_ISSUER: str = ""
     OIDC_CLIENT_ID: str = ""
     OIDC_CLIENT_SECRET: str = ""
     OIDC_SCOPE: str = "openid email profile"
+
+    # ── SSO — Generic OAuth2 (Huawei IDaaS / custom IdP) ─────────────────
+    OAUTH2_ENABLED: bool = False
+    OAUTH2_AUTHORIZATION_URL: str = ""
+    OAUTH2_TOKEN_URL: str = ""
+    OAUTH2_USERINFO_URL: str = ""
+    OAUTH2_CLIENT_ID: str = ""
+    OAUTH2_CLIENT_SECRET: str = ""
+    OAUTH2_SCOPE: str = "openid email profile"
+    OAUTH2_TOKEN_AUTH_METHOD: str = "client_secret_post"  # client_secret_post | client_secret_basic
+    OAUTH2_USER_ID_FIELD: str = "sub"
+    OAUTH2_EMAIL_FIELD: str = "email"
+    OAUTH2_NAME_FIELD: str = "name"
+    OAUTH2_AVATAR_FIELD: str = "picture"
 
     # ── SSO — LDAP ────────────────────────────────────────────────────────
     LDAP_ENABLED: bool = False
