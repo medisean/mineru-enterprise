@@ -5,14 +5,16 @@ FROM ${PYTHON_BASE_IMAGE}
 WORKDIR /app
 
 ARG APT_MIRROR=
+ARG DEBIAN_APT_MIRROR=
 ARG PIP_INDEX_URL=
 ARG PIP_EXTRA_INDEX_URL=
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+ARG PYTORCH_INDEX_URL=
 
 # System deps: build tools + runtime libs + LibreOffice + CJK fonts
-RUN if [ -n "$APT_MIRROR" ]; then \
-        if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list.d/debian.sources; fi; \
-        if [ -f /etc/apt/sources.list ]; then sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list; fi; \
+RUN mirror="${DEBIAN_APT_MIRROR:-$APT_MIRROR}"; \
+    if [ -n "$mirror" ]; then \
+        if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i "s|http://deb.debian.org/debian|${mirror}|g; s|http://security.debian.org/debian-security|${mirror}-security|g" /etc/apt/sources.list.d/debian.sources; fi; \
+        if [ -f /etc/apt/sources.list ]; then sed -i "s|http://deb.debian.org/debian|${mirror}|g; s|http://security.debian.org/debian-security|${mirror}-security|g" /etc/apt/sources.list; fi; \
     fi \
     && apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ cmake libmagic1 libgl1 libglib2.0-0 \
@@ -29,13 +31,11 @@ RUN if [ -n "$APT_MIRROR" ]; then \
 ARG TORCH_VERSION=2.7.0
 RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
     && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then python -m pip config set global.extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
-    && python -m pip install --no-cache-dir \
-    torch==${TORCH_VERSION} \
-    torchvision \
-    --extra-index-url ${PYTORCH_INDEX_URL} || \
-    python -m pip install --no-cache-dir \
-    torch==${TORCH_VERSION} \
-    torchvision
+    && if [ -n "$PYTORCH_INDEX_URL" ]; then \
+        python -m pip install --no-cache-dir torch==${TORCH_VERSION} torchvision --extra-index-url "$PYTORCH_INDEX_URL"; \
+    else \
+        python -m pip install --no-cache-dir torch==${TORCH_VERSION} torchvision; \
+    fi
 
 # ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
 COPY requirements.txt requirements-worker.txt ./

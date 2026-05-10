@@ -4,6 +4,7 @@ x-backend-build: &backend-build
   args:
     PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
     APT_MIRROR: ${APT_MIRROR:-}
+    DEBIAN_APT_MIRROR: ${DEBIAN_APT_MIRROR:-}
     PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
 
@@ -13,9 +14,10 @@ x-worker-build: &worker-build
   args:
     PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
     APT_MIRROR: ${APT_MIRROR:-}
+    DEBIAN_APT_MIRROR: ${DEBIAN_APT_MIRROR:-}
     PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
-    PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-}
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
 
 x-worker-gpu-build: &worker-gpu-build
@@ -24,9 +26,10 @@ x-worker-gpu-build: &worker-gpu-build
   args:
     CUDA_BASE_IMAGE: ${CUDA_BASE_IMAGE:-nvidia/cuda:12.4.1-runtime-ubuntu22.04}
     APT_MIRROR: ${APT_MIRROR:-}
+    UBUNTU_APT_MIRROR: ${UBUNTU_APT_MIRROR:-}
     PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
-    PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/${CUDA_VERSION:-cu124}}
+    PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-}
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     CUDA_VERSION: ${CUDA_VERSION:-cu124}
 

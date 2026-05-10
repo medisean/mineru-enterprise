@@ -13,6 +13,8 @@ NODE_BASE_IMAGE="${NODE_BASE_IMAGE:-node:20-alpine}"
 CUDA_BASE_IMAGE="${CUDA_BASE_IMAGE:-nvidia/cuda:12.4.1-runtime-ubuntu22.04}"
 NGINX_BASE_IMAGE="${NGINX_BASE_IMAGE:-nginx:1.27-alpine}"
 APT_MIRROR="${APT_MIRROR:-}"
+DEBIAN_APT_MIRROR="${DEBIAN_APT_MIRROR:-}"
+UBUNTU_APT_MIRROR="${UBUNTU_APT_MIRROR:-}"
 ALPINE_MIRROR="${ALPINE_MIRROR:-}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-}"
 PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-}"
@@ -37,11 +39,13 @@ Environment:
   NODE_BASE_IMAGE     Node base image for web.
   CUDA_BASE_IMAGE     CUDA base image for GPU worker.
   NGINX_BASE_IMAGE    Nginx base image.
-  APT_MIRROR          Debian/Ubuntu apt mirror, e.g. https://mirrors.aliyun.com/debian
+  APT_MIRROR          Backward-compatible apt mirror fallback.
+  DEBIAN_APT_MIRROR   Debian apt mirror for api/cpu worker.
+  UBUNTU_APT_MIRROR   Ubuntu apt mirror for gpu worker.
   ALPINE_MIRROR       Alpine apk mirror, e.g. https://mirrors.aliyun.com/alpine
   PIP_INDEX_URL       Python package index mirror.
   PIP_EXTRA_INDEX_URL Extra Python package index.
-  PYTORCH_INDEX_URL   PyTorch wheel index. Defaults per worker type.
+  PYTORCH_INDEX_URL   Optional PyTorch wheel extra index. Empty = use pip index only.
   NPM_REGISTRY        npm registry mirror.
   TORCH_VERSION       Worker PyTorch version. Default: 2.7.0
   CUDA_VERSION        GPU worker CUDA wheel suffix. Default: cu124
@@ -94,6 +98,7 @@ build_api() {
   docker_cmd \
     --build-arg "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \
+    --build-arg "DEBIAN_APT_MIRROR=${DEBIAN_APT_MIRROR}" \
     --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL}" \
     --build-arg "PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}" \
     -t "$image" \
@@ -118,13 +123,13 @@ build_web() {
 
 build_worker() {
   local image="${IMAGE_REPOSITORY}/worker:${IMAGE_TAG}"
-  local pytorch_index="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
   docker_cmd \
     --build-arg "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \
+    --build-arg "DEBIAN_APT_MIRROR=${DEBIAN_APT_MIRROR}" \
     --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL}" \
     --build-arg "PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}" \
-    --build-arg "PYTORCH_INDEX_URL=${pytorch_index}" \
+    --build-arg "PYTORCH_INDEX_URL=${PYTORCH_INDEX_URL}" \
     --build-arg "TORCH_VERSION=${TORCH_VERSION}" \
     -t "$image" \
     -f "$ROOT_DIR/backend/Dockerfile.worker" \
@@ -134,14 +139,14 @@ build_worker() {
 
 build_worker_gpu() {
   local image="${IMAGE_REPOSITORY}/worker-gpu:${IMAGE_TAG}"
-  local pytorch_index="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/${CUDA_VERSION}}"
   check_mineru_model_bundle
   docker_cmd \
     --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \
+    --build-arg "UBUNTU_APT_MIRROR=${UBUNTU_APT_MIRROR}" \
     --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL}" \
     --build-arg "PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}" \
-    --build-arg "PYTORCH_INDEX_URL=${pytorch_index}" \
+    --build-arg "PYTORCH_INDEX_URL=${PYTORCH_INDEX_URL}" \
     --build-arg "TORCH_VERSION=${TORCH_VERSION}" \
     --build-arg "CUDA_VERSION=${CUDA_VERSION}" \
     -t "$image" \

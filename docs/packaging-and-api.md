@@ -49,7 +49,10 @@ cd /path/to/mineru-web
 | `CUDA_VERSION` | `cu124` | CUDA wheel 后缀 |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 前端构建时 API 地址 |
 | `NEXT_PUBLIC_APP_NAME` | `MinerU Enterprise` | 前端构建时应用名 |
-| `APT_MIRROR` | (空) | Debian apt 镜像 |
+| `APT_MIRROR` | (空) | 兼容旧用法的 apt 镜像兜底 |
+| `DEBIAN_APT_MIRROR` | (空) | Debian apt 镜像，用于 API/CPU Worker |
+| `UBUNTU_APT_MIRROR` | (空) | Ubuntu apt 镜像，用于 GPU Worker/CUDA 镜像 |
+| `ALPINE_MIRROR` | (空) | Alpine apk 镜像，用于 Web/Nginx |
 | `PIP_INDEX_URL` | (空) | pip 镜像 |
 | `NPM_REGISTRY` | (空) | npm 镜像 |
 
@@ -58,6 +61,9 @@ cd /path/to/mineru-web
 ```bash
 IMAGE_REPOSITORY=registry.example.com/mineru \
 IMAGE_TAG=v1.2.0 \
+DEBIAN_APT_MIRROR=https://mirrors.aliyun.com/debian \
+UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
+ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
 PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
 NPM_REGISTRY=https://registry.npmmirror.com \
 PUSH=true \

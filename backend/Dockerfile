@@ -4,13 +4,15 @@ FROM ${PYTHON_BASE_IMAGE}
 WORKDIR /app
 
 ARG APT_MIRROR=
+ARG DEBIAN_APT_MIRROR=
 ARG PIP_INDEX_URL=
 ARG PIP_EXTRA_INDEX_URL=
 
 # System dependencies for MinerU and LDAP
-RUN if [ -n "$APT_MIRROR" ]; then \
-        if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list.d/debian.sources; fi; \
-        if [ -f /etc/apt/sources.list ]; then sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list; fi; \
+RUN mirror="${DEBIAN_APT_MIRROR:-$APT_MIRROR}"; \
+    if [ -n "$mirror" ]; then \
+        if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i "s|http://deb.debian.org/debian|${mirror}|g; s|http://security.debian.org/debian-security|${mirror}-security|g" /etc/apt/sources.list.d/debian.sources; fi; \
+        if [ -f /etc/apt/sources.list ]; then sed -i "s|http://deb.debian.org/debian|${mirror}|g; s|http://security.debian.org/debian-security|${mirror}-security|g" /etc/apt/sources.list; fi; \
     fi \
     && apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ libmagic1 libgl1 libglib2.0-0 \
