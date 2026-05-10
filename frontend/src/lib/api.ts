@@ -108,6 +108,6 @@ export const adminApi = {
   updateUser: (userId: string, data: { role?: string; is_active?: boolean; organization_id?: string }) =>
     apiClient.patch(`/admin/users/${userId}`, data),
   deleteUser: (userId: string) => apiClient.delete(`/admin/users/${userId}`),
-  listTasks: (params?: { page?: number; page_size?: number; status?: string; user_id?: string; date_from?: string; date_to?: string }) =>
+  listTasks: (params?: { page?: number; page_size?: number; status?: string; user_id?: string; search?: string; date_from?: string; date_to?: string }) =>
     apiClient.get("/admin/tasks", { params }),
 };

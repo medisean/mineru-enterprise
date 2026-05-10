@@ -4,7 +4,7 @@ Admin management endpoints.
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, or_, String
 
 from app.core.database import get_db
 from app.core.deps import get_admin_user
@@ -273,13 +273,14 @@ async def list_admin_tasks(
     page_size: int = Query(20, ge=1, le=100),
     status: str = Query("", description="Filter by status"),
     user_id: str = Query("", description="Filter by user ID"),
-    date_from: str = Query("", description="Start date (YYYY-MM-DD)"),
-    date_to: str = Query("", description="End date (YYYY-MM-DD)"),
+    search: str = Query("", description="Search filename, task ID, username, or email"),
+    date_from: str = Query("", description="Start datetime (YYYY-MM-DD or YYYY-MM-DDTHH:mm)"),
+    date_to: str = Query("", description="End datetime (YYYY-MM-DD or YYYY-MM-DDTHH:mm)"),
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_admin_user),
 ):
-    query = select(ParseTask)
-    count_query = select(func.count(ParseTask.id))
+    query = select(ParseTask, User.username).outerjoin(User, ParseTask.user_id == User.id)
+    count_query = select(func.count(ParseTask.id)).outerjoin(User, ParseTask.user_id == User.id)
 
     if status:
         query = query.where(ParseTask.status == status)
@@ -288,6 +289,18 @@ async def list_admin_tasks(
     if user_id:
         query = query.where(ParseTask.user_id == user_id)
         count_query = count_query.where(ParseTask.user_id == user_id)
+
+    search_term = search.strip()
+    if search_term:
+        pattern = f"%{search_term}%"
+        search_filter = or_(
+            ParseTask.original_filename.ilike(pattern),
+            ParseTask.id.cast(String).ilike(pattern),
+            User.username.ilike(pattern),
+            User.email.ilike(pattern),
+        )
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
 
     if date_from:
         try:
@@ -299,7 +312,9 @@ async def list_admin_tasks(
 
     if date_to:
         try:
-            dt_to = datetime.fromisoformat(date_to) + timedelta(days=1)
+            dt_to = datetime.fromisoformat(date_to)
+            if "T" not in date_to and len(date_to) <= 10:
+                dt_to = dt_to + timedelta(days=1)
             query = query.where(ParseTask.created_at < dt_to)
             count_query = count_query.where(ParseTask.created_at < dt_to)
         except ValueError:
@@ -310,18 +325,10 @@ async def list_admin_tasks(
     offset = (page - 1) * page_size
     rows = (await db.execute(
         query.order_by(ParseTask.created_at.desc()).offset(offset).limit(page_size)
-    )).scalars().all()
+    )).all()
 
     items = []
-    for task in rows:
-        # Get username
-        username = None
-        if task.user_id:
-            user_row = (await db.execute(
-                select(User.username).where(User.id == task.user_id)
-            )).scalar_one_or_none()
-            username = user_row
-
+    for task, username in rows:
         # Calculate duration
         duration_s = None
         if task.started_at and task.completed_at:

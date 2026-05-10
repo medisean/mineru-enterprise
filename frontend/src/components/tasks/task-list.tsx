@@ -485,8 +485,17 @@ export function TaskList() {
             placeholder={t("tasks.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors bg-white"
+            className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors bg-white"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label={t("tasks.clearSearch")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Status dropdown */}
@@ -528,7 +537,11 @@ export function TaskList() {
         <div className="text-center py-12">
           <FileText className="mx-auto h-10 w-10 text-gray-200 mb-3" />
           <p className="text-sm text-gray-400">
-            {statusFilter ? t("tasks.noTasksFiltered", { status: t(STATUS_FILTERS.find(f => f.value === statusFilter)!.labelKey) }) : t("tasks.noTasksEmpty")}
+            {debouncedSearch
+              ? t("tasks.noTasksMatched")
+              : statusFilter
+                ? t("tasks.noTasksFiltered", { status: t(STATUS_FILTERS.find(f => f.value === statusFilter)!.labelKey) })
+                : t("tasks.noTasksEmpty")}
           </p>
         </div>
       ) : (

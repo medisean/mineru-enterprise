@@ -80,8 +80,10 @@ export const zh: Record<string, string> = {
   // ── Task List ────────────────────────────────────────────────────────
   "tasks.allTasks": "全部任务",
   "tasks.searchPlaceholder": "搜索文件名...",
+  "tasks.clearSearch": "清空搜索",
   "tasks.totalCount": "共 {count} 条",
   "tasks.noTasksFiltered": "没有\"{status}\"状态的任务",
+  "tasks.noTasksMatched": "没有匹配的任务",
   "tasks.noTasksEmpty": "暂无任务，上传文件开始解析",
   "tasks.colName": "任务名称",
   "tasks.colStatus": "状态",
@@ -209,4 +211,7 @@ export const zh: Record<string, string> = {
   "admin.last30d": "近 30 天",
   "admin.allTime": "全部",
   "admin.noTasks": "暂无任务记录",
+  "admin.searchTasks": "搜索文件名、任务 ID、用户...",
+  "admin.clearSearch": "清空搜索",
+  "admin.noTasksMatched": "没有匹配的任务记录",
 };

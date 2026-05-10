@@ -80,8 +80,10 @@ export const en: Record<string, string> = {
   // ── Task List ────────────────────────────────────────────────────────
   "tasks.allTasks": "All Tasks",
   "tasks.searchPlaceholder": "Search filename...",
+  "tasks.clearSearch": "Clear search",
   "tasks.totalCount": "{count} total",
   "tasks.noTasksFiltered": 'No tasks with status "{status}"',
+  "tasks.noTasksMatched": "No matching tasks",
   "tasks.noTasksEmpty": "No tasks yet, upload a file to start parsing",
   "tasks.colName": "Task Name",
   "tasks.colStatus": "Status",
@@ -209,4 +211,7 @@ export const en: Record<string, string> = {
   "admin.last30d": "Last 30d",
   "admin.allTime": "All Time",
   "admin.noTasks": "No tasks found",
+  "admin.searchTasks": "Search filename, task ID, user...",
+  "admin.clearSearch": "Clear search",
+  "admin.noTasksMatched": "No matching task records",
 };
