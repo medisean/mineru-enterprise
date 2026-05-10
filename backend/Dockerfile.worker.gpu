@@ -58,5 +58,6 @@ COPY mineru-models/ /opt/mineru-models/
 COPY mineru.json /root/mineru.json
 
 COPY . .
+RUN chmod +x /app/scripts/start-gpu-worker.sh
 
-CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse_gpu", "-c", "2", "--loglevel=info"]
+CMD ["/app/scripts/start-gpu-worker.sh"]

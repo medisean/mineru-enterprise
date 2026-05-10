@@ -16,7 +16,7 @@ import { apiClient } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
   AlertCircle, RotateCcw, ZoomIn, ZoomOut,
-  FileSpreadsheet,
+  FileSpreadsheet, Square,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
@@ -47,6 +47,10 @@ interface TaskDetail {
   enable_table: boolean;
   page_ranges: string | null;
   error_message?: string;
+  queued_ahead?: number | null;
+  is_stalled?: boolean;
+  last_heartbeat_at?: string | null;
+  run_attempt?: number;
   created_at: string;
   started_at?: string;
   completed_at?: string;
@@ -111,6 +115,7 @@ export default function TaskDetailPage() {
 
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [zoom, setZoom] = useState(100);
 
   // Scroll sync refs
@@ -180,6 +185,19 @@ export default function TaskDetailPage() {
       alert(err?.response?.data?.detail || t("taskDetail.retryFailed"));
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (stopping) return;
+    setStopping(true);
+    try {
+      await apiClient.post(`/tasks/${taskId}/cancel`);
+      refetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || t("taskDetail.stopFailed"));
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -257,6 +275,25 @@ export default function TaskDetailPage() {
               </div>
             )}
 
+            {task.status === "pending" && typeof task.queued_ahead === "number" && task.queued_ahead > 0 && (
+              <p className="text-sm text-gray-500 mb-4">
+                {t("tasks.queuedAhead", { count: task.queued_ahead })}
+              </p>
+            )}
+
+            {task.status === "pending" && task.queued_ahead === 0 && (
+              <p className="text-sm text-gray-500 mb-4">
+                {t("tasks.queueHead")}
+              </p>
+            )}
+
+            {task.status === "processing" && task.is_stalled && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                <p className="text-xs text-amber-700 font-medium mb-1">{t("taskDetail.possiblyStalledTitle")}</p>
+                <p className="text-xs text-amber-600">{t("taskDetail.possiblyStalledDesc")}</p>
+              </div>
+            )}
+
             {task.error_message && (
               <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
                 <p className="text-xs text-red-600 font-medium mb-1">{t("taskDetail.parseFailedTitle")}</p>
@@ -264,12 +301,22 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {(task.status === "failed" || task.status === "cancelled") && (
-              <div className="mt-4">
+            {(task.status === "pending" || task.status === "processing" || task.status === "failed" || task.status === "cancelled" || task.is_stalled) && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {(task.status === "pending" || task.status === "processing") && (
+                  <button
+                    onClick={handleStop}
+                    disabled={stopping}
+                    className="group flex items-center gap-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4 fill-current text-gray-400 group-hover:text-gray-500" />}
+                    {stopping ? t("taskDetail.stopping") : t("taskDetail.stop")}
+                  </button>
+                )}
                 <button
                   onClick={handleRetry}
                   disabled={retrying}
-                  className="flex items-center gap-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors"
+                  className={`${(task.status === "failed" || task.status === "cancelled" || task.is_stalled) ? "flex" : "hidden"} items-center gap-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors`}
                 >
                   {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                   {retrying ? t("taskDetail.retrying") : t("taskDetail.reparse")}

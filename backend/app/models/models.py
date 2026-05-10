@@ -115,6 +115,8 @@ class ParseTask(Base):
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.PENDING, index=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    run_attempt: Mapped[int] = mapped_column(Integer, default=0)
 
     # Webhook callback
     callback_url: Mapped[str] = mapped_column(String(1024), nullable=True)       # URL to POST on completion

@@ -94,6 +94,8 @@ export const zh: Record<string, string> = {
   "tasks.delete": "删除",
   "tasks.cancel": "取消",
   "tasks.retry": "重试",
+  "tasks.stop": "停止",
+  "tasks.possiblyStalled": "可能卡住",
   "tasks.deleteTitle": "是否删除该任务？",
   "tasks.deleteSingle": "即将删除「{label}」，此操作不可恢复",
   "tasks.deleteMultiple": "即将删除{label}，此操作不可恢复",
@@ -105,6 +107,10 @@ export const zh: Record<string, string> = {
   "tasks.deleteFailed": "部分任务删除失败，请稍后重试",
   "tasks.selectCompleted": "请选择已完成的任务进行下载",
   "tasks.loadFailed": "加载失败，请刷新页面",
+  "tasks.queuedAhead": "前面约 {count} 个任务",
+  "tasks.queueHead": "队列首位，等待解析资源",
+  "tasks.pageSize": "每页",
+  "tasks.pageSummary": "第 {page}/{total} 页",
 
   // ── Status Labels (shared) ───────────────────────────────────────────
   "status.pending": "等待中",
@@ -134,8 +140,13 @@ export const zh: Record<string, string> = {
   "taskDetail.copied": "已复制",
   "taskDetail.noPreviewContent": "暂无预览内容",
   "taskDetail.retryFailed": "重试失败，请稍后再试",
+  "taskDetail.stopFailed": "停止失败，请稍后再试",
   "taskDetail.retrying": "重新提交中...",
+  "taskDetail.stopping": "停止中...",
   "taskDetail.reparse": "重新解析",
+  "taskDetail.stop": "停止任务",
+  "taskDetail.possiblyStalledTitle": "任务可能卡住",
+  "taskDetail.possiblyStalledDesc": "长时间未收到解析心跳，可以先停止任务，或直接重新解析。",
   "taskDetail.parseFailedTitle": "解析失败",
   "taskDetail.elapsed": "耗时",
 

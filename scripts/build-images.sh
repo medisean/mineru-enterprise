@@ -119,7 +119,6 @@ build_web() {
 build_worker() {
   local image="${IMAGE_REPOSITORY}/worker:${IMAGE_TAG}"
   local pytorch_index="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
-  check_mineru_model_bundle
   docker_cmd \
     --build-arg "PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \

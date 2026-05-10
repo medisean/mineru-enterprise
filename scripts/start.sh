@@ -28,7 +28,7 @@ case $MODE in
     ;;
   prod)
     echo "启动生产模式（GPU only + Nginx）..."
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile gpu up -d
     echo -e "${GREEN}✅ 服务已启动（生产模式 — GPU only）${NC}"
     echo "  Nginx:     http://localhost:80"
     echo "  API:       http://localhost:8000/api/docs"

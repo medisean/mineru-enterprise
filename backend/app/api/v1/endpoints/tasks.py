@@ -4,12 +4,12 @@ File upload & parse task endpoints.
 import io
 import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
@@ -25,6 +25,59 @@ from app.services.file_validation import validate_file_magic
 from app.workers.parse_worker import dispatch_parse_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+ACTIVE_QUEUE_STATUSES = (TaskStatus.PENDING, TaskStatus.PROCESSING)
+
+
+async def _queued_ahead(db: AsyncSession, task: ParseTask) -> Optional[int]:
+    if task.status != TaskStatus.PENDING:
+        return None
+    conditions = [
+        or_(
+            ParseTask.status == TaskStatus.PROCESSING,
+            and_(ParseTask.status == TaskStatus.PENDING, ParseTask.created_at < task.created_at),
+        ),
+    ]
+    count = await db.scalar(select(func.count(ParseTask.id)).where(*conditions))
+    return int(count or 0)
+
+
+async def _task_out(db: AsyncSession, task: ParseTask) -> TaskOut:
+    data = TaskOut.model_validate(task)
+    data.queued_ahead = await _queued_ahead(db, task)
+    data.is_stalled = _is_task_stalled(task)
+    return data
+
+
+async def _task_out_list(db: AsyncSession, tasks: list[ParseTask]) -> list[TaskOut]:
+    return [await _task_out(db, task) for task in tasks]
+
+
+def _is_task_stalled(task: ParseTask) -> bool:
+    if task.status != TaskStatus.PROCESSING:
+        return False
+    marker = task.last_heartbeat_at or task.started_at
+    if not marker:
+        return False
+    now = datetime.now(timezone.utc)
+    if marker.tzinfo is None:
+        marker = marker.replace(tzinfo=timezone.utc)
+    return (now - marker).total_seconds() > settings.TASK_STALLED_AFTER_SECONDS
+
+
+def _dispatch_existing_task(task: ParseTask) -> str:
+    return dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
+        "backend": task.backend,
+        "output_format": task.output_format,
+        "language": task.language,
+        "is_ocr": task.is_ocr,
+        "enable_formula": task.enable_formula,
+        "enable_table": task.enable_table,
+        "page_ranges": task.page_ranges,
+        "parse_options": None,
+        "run_attempt": task.run_attempt,
+    })
 
 
 # ── Step 1: Request presigned upload URL ─────────────────────────────────────
@@ -107,11 +160,13 @@ async def create_task(
         "enable_table": payload.enable_table,
         "page_ranges": payload.page_ranges,
         "parse_options": payload.parse_options,
+        "run_attempt": task.run_attempt,
     })
     task.celery_task_id = celery_task_id
+    task.last_heartbeat_at = datetime.now(timezone.utc)
     await db.commit()
 
-    return task
+    return await _task_out(db, task)
 
 
 # ── List tasks ────────────────────────────────────────────────────────────────
@@ -136,7 +191,7 @@ async def list_tasks(
     q = q.order_by(ParseTask.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     tasks = (await db.execute(q)).scalars().all()
 
-    return TaskListResponse(items=tasks, total=total, page=page, page_size=page_size)
+    return TaskListResponse(items=await _task_out_list(db, tasks), total=total, page=page, page_size=page_size)
 
 
 # ── Get single task ───────────────────────────────────────────────────────────
@@ -149,7 +204,7 @@ async def get_task(
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    return await _task_out(db, task)
 
 
 # ── Get source file presigned URL (for inline preview) ─────────────────────
@@ -303,19 +358,26 @@ async def batch_download(
     }
 
 
-# ── Retry a failed/cancelled task ─────────────────────────────────────────
+# ── Retry a failed/cancelled/stalled task ───────────────────────────────────
 @router.post("/{task_id}/retry", response_model=TaskOut)
 async def retry_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retry a failed or cancelled task — resets status and re-dispatches to Celery."""
+    """Retry a failed, cancelled, or stalled task — resets status and re-dispatches to Celery."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in (TaskStatus.FAILED, TaskStatus.CANCELLED):
-        raise HTTPException(status_code=400, detail="Only failed or cancelled tasks can be retried")
+    if task.status not in (TaskStatus.FAILED, TaskStatus.CANCELLED) and not _is_task_stalled(task):
+        raise HTTPException(status_code=400, detail="Only failed, cancelled, or stalled tasks can be retried")
+
+    if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING) and task.celery_task_id:
+        try:
+            from app.workers.parse_worker import celery_app
+            celery_app.control.revoke(task.celery_task_id, terminate=True, signal="SIGTERM")
+        except Exception:
+            pass
 
     # Reset task state
     task.status = TaskStatus.PENDING
@@ -323,6 +385,8 @@ async def retry_task(
     task.error_message = None
     task.started_at = None
     task.completed_at = None
+    task.last_heartbeat_at = None
+    task.run_attempt = (task.run_attempt or 0) + 1
     # Generate a fresh output prefix so old results don't collide
     task.output_s3_prefix = f"results/{current_user.id}/{uuid.uuid4()}"
     task.celery_task_id = None
@@ -330,21 +394,44 @@ async def retry_task(
     await db.refresh(task)
 
     # Re-dispatch to Celery
-    celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
-        "backend": task.backend,
-        "output_format": task.output_format,
-        "language": task.language,
-        "is_ocr": task.is_ocr,
-        "enable_formula": task.enable_formula,
-        "enable_table": task.enable_table,
-        "page_ranges": task.page_ranges,
-        "parse_options": None,
-    })
+    celery_task_id = _dispatch_existing_task(task)
     task.celery_task_id = celery_task_id
+    task.last_heartbeat_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(task)
 
-    return task
+    return await _task_out(db, task)
+
+
+# ── Stop task without deleting record ────────────────────────────────────────
+@router.post("/{task_id}/cancel", response_model=TaskOut)
+async def cancel_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await db.get(ParseTask, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+        raise HTTPException(status_code=400, detail="Only pending or processing tasks can be stopped")
+
+    if task.celery_task_id:
+        try:
+            from app.workers.parse_worker import celery_app
+            celery_app.control.revoke(task.celery_task_id, terminate=True, signal="SIGTERM")
+        except Exception:
+            pass
+
+    task.status = TaskStatus.CANCELLED
+    task.error_message = "用户手动停止任务"
+    task.progress = min(task.progress or 0, 99)
+    task.completed_at = datetime.now(timezone.utc)
+    task.last_heartbeat_at = None
+    task.run_attempt = (task.run_attempt or 0) + 1
+    await db.commit()
+    await db.refresh(task)
+    return await _task_out(db, task)
 
 
 # ── Cancel task ───────────────────────────────────────────────────────────────
@@ -469,8 +556,10 @@ async def batch_create_tasks(
             "enable_table": payload.enable_table,
             "page_ranges": payload.page_ranges,
             "parse_options": payload.parse_options,
+            "run_attempt": task.run_attempt,
         })
         task.celery_task_id = celery_task_id
+        task.last_heartbeat_at = datetime.now(timezone.utc)
 
     await db.commit()
 
@@ -480,7 +569,7 @@ async def batch_create_tasks(
         await db.refresh(task)
         all_tasks.append(task)
 
-    return {"items": [TaskOut.model_validate(t) for t in all_tasks], "total": len(all_tasks)}
+    return {"items": await _task_out_list(db, all_tasks), "total": len(all_tasks)}
 
 
 # ── Get task result preview (Markdown + JSON content) ───────────────────

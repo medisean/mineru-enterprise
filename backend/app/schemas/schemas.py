@@ -113,6 +113,7 @@ class CreateTaskRequest(BaseModel):
         ALLOWED_KEYS = {
             "auto-detect-direction", "lang", "ocr", "formula", "table",
             "output-format", "device", "backend", "pages", "formats",
+            "url", "server-url", "api-url", "image-analysis",
         }
         for key in v:
             # Reject keys not in whitelist
@@ -152,6 +153,10 @@ class TaskOut(BaseModel):
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     output_s3_prefix: Optional[str]
+    queued_ahead: Optional[int] = None
+    last_heartbeat_at: Optional[datetime] = None
+    is_stalled: bool = False
+    run_attempt: int = 0
 
     model_config = {"from_attributes": True}
 

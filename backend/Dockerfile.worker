@@ -41,17 +41,15 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "
 COPY requirements.txt requirements-worker.txt ./
 RUN python -m pip install --no-cache-dir -r requirements-worker.txt
 
-# ── Bundle pre-downloaded MinerU models for offline production ───────────────
+# ── Local model cache paths ──────────────────────────────────────────────────
+# Local CPU worker may download/cache models here. Offline mineru.json is only
+# required by the GPU/production worker image.
 ENV HF_HOME=/opt/mineru-models/huggingface \
     HUGGINGFACE_HUB_CACHE=/opt/mineru-models/huggingface/hub \
-    TRANSFORMERS_CACHE=/opt/mineru-models/huggingface/hub \
-    MINERU_MODEL_SOURCE=local \
-    HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1
+    TRANSFORMERS_CACHE=/opt/mineru-models/huggingface/hub
 
 COPY mineru-models/ /opt/mineru-models/
-COPY mineru.json /root/mineru.json
 
 COPY . .
 
-CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse_cpu", "-c", "2", "--loglevel=info"]
+CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse_cpu", "-c", "1", "--loglevel=info"]

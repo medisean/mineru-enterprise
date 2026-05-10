@@ -102,9 +102,17 @@ cp .env.example .env
 # 开发
 docker compose --profile minio up -d
 
-# 生产
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# 生产（GPU only）
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile gpu up -d
 ```
+
+GPU worker 默认使用所有可见 GPU；也可以通过环境变量指定卡号：
+
+```bash
+GPU_WORKER_DEVICES=0,1 ./scripts/start.sh prod
+```
+
+每张卡会启动 1 个 Celery worker，每个 worker 并发为 1。
 
 ### 1.6 服务端口
 

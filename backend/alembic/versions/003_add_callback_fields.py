@@ -1,13 +1,13 @@
 """add callback_url and callback_seed to parse_tasks
 
-Revision ID: 003
-Revises: 002
+Revision ID: 003_add_callback_fields
+Revises: 002_add_data_id
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "003"
-down_revision = "002"
+revision = "003_add_callback_fields"
+down_revision = "002_add_data_id"
 branch_labels = None
 depends_on = None
 

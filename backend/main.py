@@ -2,6 +2,7 @@
 MinerU Enterprise - Backend Entry Point
 """
 from contextlib import asynccontextmanager
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -17,7 +18,18 @@ from app.api.v1.endpoints.official import router as official_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    yield
+    from app.services.task_watchdog import watchdog_loop
+    stop_event = asyncio.Event()
+    watchdog_task = asyncio.create_task(watchdog_loop(stop_event))
+    try:
+        yield
+    finally:
+        stop_event.set()
+        watchdog_task.cancel()
+        try:
+            await watchdog_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

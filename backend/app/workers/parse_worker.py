@@ -3,7 +3,9 @@ Celery worker — MinerU document parsing tasks.
 """
 import os
 import io
+import signal
 import tempfile
+import time
 import structlog
 from datetime import datetime, timezone
 from celery import Celery
@@ -57,12 +59,13 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
     # Use the module-level engine/session factory (connection pool is reused)
     Session = _SessionFactory
+    run_attempt = int(config.get("run_attempt") or 0)
 
     def update_task_status(status, progress=None, error=None, output_prefix=None):
         with Session() as session:
             from app.models.models import ParseTask, TaskStatus
             task = session.get(ParseTask, task_id)
-            if task:
+            if task and task.run_attempt == run_attempt:
                 task.status = TaskStatus(status)
                 if progress is not None:
                     task.progress = progress
@@ -71,9 +74,13 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 if output_prefix:
                     task.output_s3_prefix = output_prefix
                 if status == "processing":
-                    task.started_at = datetime.now(timezone.utc)
+                    now = datetime.now(timezone.utc)
+                    if task.started_at is None:
+                        task.started_at = now
+                    task.last_heartbeat_at = now
                 elif status in ("success", "failed"):
                     task.completed_at = datetime.now(timezone.utc)
+                    task.last_heartbeat_at = None
                 session.commit()
 
                 # Fire webhook callback on terminal states
@@ -95,6 +102,32 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                     except Exception as e:
                         logger.warning("Failed to dispatch webhook", task_id=task_id, error=str(e))
 
+    def heartbeat(progress=None):
+        with Session() as session:
+            from app.models.models import ParseTask, TaskStatus
+            task = session.get(ParseTask, task_id)
+            if not task or task.run_attempt != run_attempt:
+                return False
+            if task.status == TaskStatus.CANCELLED:
+                return False
+            if task.status != TaskStatus.PROCESSING:
+                task.status = TaskStatus.PROCESSING
+            if progress is not None:
+                task.progress = progress
+            task.last_heartbeat_at = datetime.now(timezone.utc)
+            session.commit()
+            return True
+
+    def terminate_process(process):
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=10)
+        except Exception:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except Exception:
+                pass
+
     try:
         update_task_status("processing", progress=5)
         self.update_state(state="PROGRESS", meta={"progress": 5, "message": "Downloading file"})
@@ -115,13 +148,15 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         # Build MinerU CLI command with full parameter set
         backend = config.get("backend", settings.MINERU_BACKEND)
         device = config.get("device", settings.MINERU_DEVICE)
-        output_format = config.get("output_format", settings.MINERU_OUTPUT_FORMAT)
         language = config.get("language", "")
         is_ocr = config.get("is_ocr")
         enable_formula = config.get("enable_formula", True)
         enable_table = config.get("enable_table", True)
         page_ranges = config.get("page_ranges")
-        parse_options = config.get("parse_options", {})
+        parse_options = config.get("parse_options") or {}
+        server_url = config.get("server_url") or parse_options.get("url") or parse_options.get("server-url")
+        api_url = config.get("api_url") or parse_options.get("api-url")
+        image_analysis = config.get("image_analysis", parse_options.get("image-analysis", True))
 
         with tempfile.TemporaryDirectory() as output_dir:
             cmd = [
@@ -130,54 +165,45 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 "-o", output_dir,
             ]
 
-            # Device selection (cpu | cuda | mps)
-            if device and device != "cpu":
-                cmd += ["--device", device]
-
-            # Backend model selection (omit if empty → MinerU uses its default hybrid-auto-engine)
+            # MinerU 3.x CLI uses backend/method flags. Device is selected by
+            # the worker image/runtime, not by a CLI --device flag.
             if backend:
-                cmd += ["--backend", backend]
+                cmd += ["-b", backend]
 
-            # Output format: MinerU uses --output-format for md/json
-            # For docx/html/latex, we use the --formats extra flag
-            if output_format in ("markdown", "md"):
-                cmd += ["--output-format", "md"]
-            elif output_format == "json":
-                cmd += ["--output-format", "json"]
-            elif output_format == "both":
-                # MinerU outputs both by default; just run normally
-                pass
-            else:
-                # docx / html / latex — MinerU supports extra export formats
-                cmd += ["--output-format", "md"]
-                # Extra formats handled in post-processing or by MinerU --formats
-                if output_format in ("docx", "html", "latex"):
-                    cmd += ["--formats", output_format]
-
-            # Language
-            if language and language != "auto":
-                cmd += ["--lang", language]
-
-            # OCR toggle (only add flag when explicitly True)
             if is_ocr is True:
-                cmd.append("--ocr")
+                cmd += ["-m", "ocr"]
             elif is_ocr is False:
-                cmd.append("--no-ocr")
+                cmd += ["-m", "txt"]
+            else:
+                cmd += ["-m", "auto"]
 
-            # Formula recognition
-            if enable_formula is False:
-                cmd.append("--no-formula")
+            if language and language != "auto":
+                cmd += ["-l", language]
 
-            # Table recognition
-            if enable_table is False:
-                cmd.append("--no-table")
+            cmd += ["-f", _bool_cli(enable_formula)]
+            cmd += ["-t", _bool_cli(enable_table)]
+            cmd += ["--image-analysis", _bool_cli(image_analysis)]
 
-            # Page ranges
-            if page_ranges:
-                cmd += ["--pages", page_ranges]
+            start_page, end_page = _page_range_to_start_end(page_ranges)
+            if start_page is not None:
+                cmd += ["-s", str(start_page)]
+            if end_page is not None:
+                cmd += ["-e", str(end_page)]
 
-            # Any extra CLI options from parse_options
+            if server_url:
+                cmd += ["-u", str(server_url)]
+            if api_url:
+                cmd += ["--api-url", str(api_url)]
+
+            # Any extra MinerU 3.x CLI options from parse_options.
+            handled_options = {
+                "url", "server-url", "api-url", "image-analysis",
+                "output-format", "device", "backend", "pages", "formats",
+                "lang", "ocr", "formula", "table",
+            }
             for key, value in parse_options.items() if parse_options else []:
+                if key in handled_options:
+                    continue
                 if value is True:
                     cmd.append(f"--{key}")
                 elif value is False:
@@ -190,21 +216,39 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             logger.info("MinerU command", cmd=" ".join(cmd), task_id=task_id)
 
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                start_new_session=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=3000,
             )
+            stdout, stderr = "", ""
+            started = time.monotonic()
+            last_heartbeat = 0.0
+            while True:
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate()
+                    break
+                now_monotonic = time.monotonic()
+                if now_monotonic - started > 3000:
+                    terminate_process(process)
+                    raise TimeoutError("MinerU parsing timed out")
+                if now_monotonic - last_heartbeat >= settings.TASK_HEARTBEAT_INTERVAL_SECONDS:
+                    if not heartbeat(progress=30):
+                        terminate_process(process)
+                        raise RuntimeError("Parse task was stopped or superseded")
+                    last_heartbeat = now_monotonic
+                time.sleep(1)
 
             # Log MinerU output for debugging (especially image parsing issues)
-            if result.stdout:
-                logger.info("MinerU stdout", task_id=task_id, output=result.stdout[:3000])
-            if result.stderr:
-                logger.warning("MinerU stderr", task_id=task_id, output=result.stderr[:3000])
+            if stdout:
+                logger.info("MinerU stdout", task_id=task_id, output=stdout[:3000])
+            if stderr:
+                logger.warning("MinerU stderr", task_id=task_id, output=stderr[:3000])
 
-            if result.returncode != 0:
-                raise RuntimeError(f"MinerU error (exit {result.returncode}): {result.stderr[:2000]}")
+            if process.returncode != 0:
+                raise RuntimeError(f"MinerU error (exit {process.returncode}): {stderr[:2000]}")
 
             update_task_status("processing", progress=80)
             self.update_state(state="PROGRESS", meta={"progress": 80, "message": "Uploading results"})
@@ -253,6 +297,11 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
     except Exception as exc:
         logger.error("Parse task failed", task_id=task_id, error=str(exc))
         update_task_status("failed", error=str(exc))
+        with Session() as session:
+            from app.models.models import ParseTask, TaskStatus
+            task = session.get(ParseTask, task_id)
+            if not task or task.run_attempt != run_attempt or task.status == TaskStatus.CANCELLED:
+                return {"status": "cancelled", "output_prefix": output_s3_prefix, "files": []}
         raise self.retry(exc=exc, countdown=30) if self.request.retries < self.max_retries else exc
 
 
@@ -276,6 +325,31 @@ def _guess_content_type(filename: str) -> str:
         "tex": "application/x-latex",
     }
     return types.get(ext, "application/octet-stream")
+
+
+def _bool_cli(value) -> str:
+    """Return MinerU 3.x boolean CLI value."""
+    return "true" if bool(value) else "false"
+
+
+def _page_range_to_start_end(page_ranges: str | None) -> tuple[int | None, int | None]:
+    """Convert a 1-based page range such as '1-10' or '2' to MinerU 0-based bounds."""
+    if not page_ranges:
+        return None, None
+    first_range = str(page_ranges).split(",", 1)[0].strip()
+    if not first_range:
+        return None, None
+    if "-" in first_range:
+        start_raw, end_raw = first_range.split("-", 1)
+    else:
+        start_raw, end_raw = first_range, first_range
+    try:
+        start = max(int(start_raw.strip()) - 1, 0)
+        end = max(int(end_raw.strip()) - 1, start)
+        return start, end
+    except ValueError:
+        logger.warning("Invalid page range ignored", page_ranges=page_ranges)
+        return None, None
 
 
 def _get_office_extension(s3_key: str) -> str | None:

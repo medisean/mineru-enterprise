@@ -94,6 +94,8 @@ export const en: Record<string, string> = {
   "tasks.delete": "Delete",
   "tasks.cancel": "Cancel",
   "tasks.retry": "Retry",
+  "tasks.stop": "Stop",
+  "tasks.possiblyStalled": "Possibly stalled",
   "tasks.deleteTitle": "Delete this task?",
   "tasks.deleteSingle": 'About to delete "{label}", this action cannot be undone',
   "tasks.deleteMultiple": "About to delete {label}, this action cannot be undone",
@@ -105,6 +107,10 @@ export const en: Record<string, string> = {
   "tasks.deleteFailed": "Some tasks failed to delete, please try again later",
   "tasks.selectCompleted": "Please select completed tasks to download",
   "tasks.loadFailed": "Load failed, please refresh",
+  "tasks.queuedAhead": "About {count} task(s) ahead",
+  "tasks.queueHead": "First in queue, waiting for parse capacity",
+  "tasks.pageSize": "Per page",
+  "tasks.pageSummary": "Page {page}/{total}",
 
   // ── Status Labels (shared) ───────────────────────────────────────────
   "status.pending": "Pending",
@@ -134,8 +140,13 @@ export const en: Record<string, string> = {
   "taskDetail.copied": "Copied",
   "taskDetail.noPreviewContent": "No preview content",
   "taskDetail.retryFailed": "Retry failed, please try again later",
+  "taskDetail.stopFailed": "Stop failed, please try again later",
   "taskDetail.retrying": "Retrying...",
+  "taskDetail.stopping": "Stopping...",
   "taskDetail.reparse": "Re-parse",
+  "taskDetail.stop": "Stop Task",
+  "taskDetail.possiblyStalledTitle": "Task may be stalled",
+  "taskDetail.possiblyStalledDesc": "No parse heartbeat has been received for a while. You can stop the task first, or re-parse it directly.",
   "taskDetail.parseFailedTitle": "Parse Failed",
   "taskDetail.elapsed": "Elapsed",
 

@@ -143,9 +143,6 @@ services:
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
-      MINERU_MODEL_SOURCE: "local"
-      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
-      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,7 +150,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c 2 --loglevel=info
+    command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c ${CPU_WORKER_CONCURRENCY:-1} --loglevel=info
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
   worker-gpu:
@@ -174,18 +171,19 @@ services:
       MINERU_MODEL_SOURCE: "local"
       HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
+      GPU_WORKER_DEVICES: "${GPU_WORKER_DEVICES:-}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.workers.parse_worker.celery_app worker -Q parse_gpu -c 2 --loglevel=info
+    command: /app/scripts/start-gpu-worker.sh
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
     profiles: ["gpu"]
 

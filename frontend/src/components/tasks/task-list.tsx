@@ -10,7 +10,7 @@ import {
   CheckCircle2, XCircle, Clock, Loader2, FileText,
   FileSpreadsheet, FileImage, File,
   ChevronLeft, ChevronRight, ChevronDown, Search, RotateCcw, Trash2,
-  Download, X, AlertTriangle,
+  Download, X, AlertTriangle, Square,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useT } from "@/lib/i18n/use-translation";
@@ -28,6 +28,9 @@ interface Task {
   enable_formula: boolean;
   enable_table: boolean;
   error_message?: string;
+  queued_ahead?: number | null;
+  is_stalled?: boolean;
+  last_heartbeat_at?: string | null;
   created_at: string;
   completed_at?: string;
 }
@@ -47,6 +50,9 @@ const STATUS_FILTERS = [
   { value: "success", labelKey: "status.success" },
   { value: "failed", labelKey: "status.failed" },
 ];
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const PAGE_SIZE_STORAGE_KEY = "mineru.tasks.pageSize";
 
 const FILE_TYPE_MAP: Record<string, { icon: React.ElementType; color: string }> = {
   pdf:  { icon: FileText, color: "text-red-500" },
@@ -118,6 +124,7 @@ function TaskRow({
   const t = useT();
   const wsRef = useRef<WebSocket | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -134,12 +141,12 @@ function TaskRow({
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
         ws.close();
       } else {
-        queryClient.setQueryData(["tasks"], (old: { items: Task[] } | undefined) => {
+        queryClient.setQueriesData({ queryKey: ["tasks"] }, (old: { items: Task[] } | undefined) => {
           if (!old) return old;
           return {
             ...old,
             items: old.items.map((t) =>
-              t.id === task.id ? { ...t, status: data.status, progress: data.progress } : t
+              t.id === task.id ? { ...t, status: data.status, progress: data.progress, queued_ahead: data.queued_ahead, is_stalled: data.is_stalled } : t
             ),
           };
         });
@@ -161,6 +168,22 @@ function TaskRow({
       // silent
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const handleStop = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (stopping) return;
+    setStopping(true);
+    try {
+      await apiClient.post(`/tasks/${task.id}/cancel`);
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+    } catch {
+      // silent
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -216,6 +239,21 @@ function TaskRow({
             />
           </div>
         )}
+        {task.status === "pending" && typeof task.queued_ahead === "number" && task.queued_ahead > 0 && (
+          <p className="mt-1 text-xs text-gray-400 whitespace-nowrap">
+            {t("tasks.queuedAhead", { count: task.queued_ahead })}
+          </p>
+        )}
+        {task.status === "pending" && task.queued_ahead === 0 && (
+          <p className="mt-1 text-xs text-gray-400 whitespace-nowrap">
+            {t("tasks.queueHead")}
+          </p>
+        )}
+        {task.status === "processing" && task.is_stalled && (
+          <p className="mt-1 text-xs text-amber-600 whitespace-nowrap">
+            {t("tasks.possiblyStalled")}
+          </p>
+        )}
       </td>
       {/* Type */}
       <td className="py-4 pr-5">
@@ -234,7 +272,17 @@ function TaskRow({
       {/* Actions */}
       <td className="py-4 pr-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-1">
-          {task.status === "failed" && (
+          {(task.status === "pending" || task.status === "processing") && (
+            <button
+              onClick={handleStop}
+              disabled={stopping}
+              className="group inline-flex items-center gap-1 text-xs text-gray-500 hover:text-amber-700 hover:bg-amber-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+            >
+              {stopping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current text-gray-400 group-hover:text-amber-500" />}
+              {t("tasks.stop")}
+            </button>
+          )}
+          {(task.status === "failed" || task.status === "cancelled" || task.is_stalled) && (
             <button
               onClick={handleRetry}
               disabled={retrying}
@@ -270,7 +318,11 @@ export function TaskList() {
   const [downloading, setDownloading] = useState(false);
   const [downloadNotice, setDownloadNotice] = useState<{ url: string; count: number } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; label: string } | null>(null);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window === "undefined") return 20;
+    const saved = Number(window.localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.includes(saved as (typeof PAGE_SIZE_OPTIONS)[number]) ? saved : 20;
+  });
 
   // Debounce search: 500ms after user stops typing, apply the search
   useEffect(() => {
@@ -282,7 +334,7 @@ export function TaskList() {
   }, [searchQuery]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["tasks", page, statusFilter, debouncedSearch],
+    queryKey: ["tasks", page, pageSize, statusFilter, debouncedSearch],
     queryFn: () =>
       tasksApi
         .list({
@@ -554,39 +606,60 @@ export function TaskList() {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-1 pt-1">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          {buildPageNumbers(page, totalPages).map((p, i) =>
-            p === "..." ? (
-              <span key={`ellipsis-${i}`} className="text-xs text-gray-400 px-1">…</span>
-            ) : (
+      {(totalPages > 1 || (data?.total ?? 0) > 20) && (
+        <div className="flex items-center justify-end gap-3 pt-1">
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1">
               <button
-                key={p}
-                onClick={() => setPage(p as number)}
-                className={`min-w-[28px] h-7 text-xs rounded-lg transition-colors ${
-                  page === p
-                    ? "bg-blue-600 text-white font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                {p}
+                <ChevronLeft className="h-3.5 w-3.5" />
               </button>
-            )
+              {buildPageNumbers(page, totalPages).map((p, i) =>
+                p === "..." ? (
+                  <span key={`ellipsis-${i}`} className="text-xs text-gray-400 px-1">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p as number)}
+                    className={`min-w-[28px] h-7 text-xs rounded-lg transition-colors ${
+                      page === p
+                        ? "bg-blue-600 text-white font-medium"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
+          <label className="inline-flex items-center gap-1.5 text-xs text-gray-500 whitespace-nowrap">
+            {t("tasks.pageSize")}
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                const nextPageSize = Number(e.target.value);
+                setPageSize(nextPageSize);
+                window.localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(nextPageSize));
+                setPage(1);
+              }}
+              className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
 

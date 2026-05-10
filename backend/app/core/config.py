@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     WEBHOOK_MAX_RETRIES: int = 3                    # max retry attempts (exponential backoff)
     WEBHOOK_SECRET: str = ""                        # global HMAC key (if empty, per-task seed used)
 
+    # ── Task Runtime Guardrails ─────────────────────────────────────────
+    TASK_HEARTBEAT_INTERVAL_SECONDS: int = 15
+    TASK_PENDING_STALLED_AFTER_SECONDS: int = 120
+    TASK_STALLED_AFTER_SECONDS: int = 300
+    TASK_WATCHDOG_INTERVAL_SECONDS: int = 60
+
     # ── File Limits ───────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 200
     ALLOWED_EXTENSIONS: List[str] = [
