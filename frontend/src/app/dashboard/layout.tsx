@@ -12,6 +12,7 @@ import { tasksApi } from "@/lib/api";
 import {
   LogOut, FileText, Plus, Loader2, ChevronLeft, ChevronRight,
   CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
+  Shield, Users, Clock4,
 } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
@@ -223,6 +224,36 @@ export default function DashboardLayout({
             active={pathname.startsWith("/dashboard/tasks") && !isTaskDetail}
             href="/dashboard?tab=tasks"
           />
+          {/* Admin section — only for admins */}
+          {(user?.role === "admin" || user?.is_superuser) && (
+            <>
+              <div className={`pt-3 pb-1 ${collapsed ? "px-0 text-center" : "px-3"}`}>
+                {!collapsed && <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">{t("sidebar.admin")}</span>}
+                {collapsed && <div className="h-px bg-gray-100 mx-1" />}
+              </div>
+              <NavItem
+                icon={<Shield className="h-4 w-4" />}
+                label={t("sidebar.adminDashboard")}
+                collapsed={collapsed}
+                active={pathname === "/dashboard/admin"}
+                href="/dashboard/admin"
+              />
+              <NavItem
+                icon={<Users className="h-4 w-4" />}
+                label={t("sidebar.userMgmt")}
+                collapsed={collapsed}
+                active={pathname === "/dashboard/admin/users"}
+                href="/dashboard/admin/users"
+              />
+              <NavItem
+                icon={<Clock4 className="h-4 w-4" />}
+                label={t("sidebar.taskHistory")}
+                collapsed={collapsed}
+                active={pathname === "/dashboard/admin/tasks"}
+                href="/dashboard/admin/tasks"
+              />
+            </>
+          )}
         </nav>
 
         {/* Recent tasks — only when expanded */}

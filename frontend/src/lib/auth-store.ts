@@ -13,6 +13,8 @@ interface User {
   full_name?: string;
   avatar_url?: string;
   role: string;
+  is_superuser?: boolean;
+  organization_id?: string | null;
 }
 
 interface AuthState {

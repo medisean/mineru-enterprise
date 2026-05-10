@@ -66,7 +66,10 @@ class UserOut(BaseModel):
     role: str
     sso_provider: str
     is_active: bool
+    is_superuser: bool
+    organization_id: Optional[str] = None
     created_at: datetime
+    last_login_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -343,3 +346,124 @@ class AgentParseResultData(BaseModel):
     markdown_url: Optional[str] = None
     err_msg: Optional[str] = ""
     err_code: Optional[int] = None
+
+
+# ─── Admin ──────────────────────────────────────────────────────────────────
+
+class AdminUserOut(BaseModel):
+    id: str
+    email: str
+    username: str
+    full_name: Optional[str]
+    avatar_url: Optional[str]
+    role: str
+    sso_provider: str
+    is_active: bool
+    is_superuser: bool
+    organization_id: Optional[str] = None
+    organization_name: Optional[str] = None
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+    task_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class AdminUserUpdate(BaseModel):
+    role: Optional[str] = None            # admin | member | viewer
+    is_active: Optional[bool] = None
+    organization_id: Optional[str] = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v):
+        if v is not None and v not in ("admin", "member", "viewer"):
+            raise ValueError("Role must be admin, member, or viewer")
+        return v
+
+
+class AdminUserListResponse(BaseModel):
+    items: List[AdminUserOut]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminOrgOut(BaseModel):
+    id: str
+    name: str
+    slug: str
+    quota_mb: int
+    max_concurrent_tasks: int
+    created_at: datetime
+    member_count: int = 0
+    task_count: int = 0
+    storage_used_mb: float = 0
+
+    model_config = {"from_attributes": True}
+
+
+class AdminOrgCreate(BaseModel):
+    name: str
+    slug: str
+    quota_mb: int = 10240
+    max_concurrent_tasks: int = 5
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v):
+        if not re.match(r"^[a-zA-Z0-9_-]{2,64}$", v):
+            raise ValueError("Slug must be 2-64 chars, alphanumeric/underscore/hyphen only")
+        return v
+
+
+class AdminOrgUpdate(BaseModel):
+    name: Optional[str] = None
+    quota_mb: Optional[int] = None
+    max_concurrent_tasks: Optional[int] = None
+
+
+class AdminOrgListResponse(BaseModel):
+    items: List[AdminOrgOut]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminRecentUser(BaseModel):
+    id: str
+    username: str
+    email: str
+    created_at: datetime
+
+
+class AdminStatsOut(BaseModel):
+    total_users: int
+    total_tasks: int
+    tasks_by_status: dict       # {"pending": N, "processing": N, ...}
+    total_storage_mb: float
+    recent_users: List[AdminRecentUser]
+
+
+class AdminTaskOut(BaseModel):
+    id: str
+    original_filename: str
+    file_size_bytes: int
+    status: str
+    progress: int
+    backend: str
+    username: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    duration_s: Optional[int] = None       # seconds
+    error_message: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdminTaskListResponse(BaseModel):
+    items: List[AdminTaskOut]
+    total: int
+    page: int
+    page_size: int

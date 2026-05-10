@@ -99,3 +99,15 @@ export const tasksApi: Record<string, Function> = {
   delete: (id: string) => apiClient.delete(`/tasks/${id}`),
   retry: (id: string) => apiClient.post(`/tasks/${id}/retry`),
 };
+
+export const adminApi = {
+  getStats: () => apiClient.get("/admin/stats"),
+  listUsers: (params?: { page?: number; page_size?: number; search?: string; role?: string }) =>
+    apiClient.get("/admin/users", { params }),
+  getUser: (userId: string) => apiClient.get(`/admin/users/${userId}`),
+  updateUser: (userId: string, data: { role?: string; is_active?: boolean; organization_id?: string }) =>
+    apiClient.patch(`/admin/users/${userId}`, data),
+  deleteUser: (userId: string) => apiClient.delete(`/admin/users/${userId}`),
+  listTasks: (params?: { page?: number; page_size?: number; status?: string; user_id?: string; date_from?: string; date_to?: string }) =>
+    apiClient.get("/admin/tasks", { params }),
+};
