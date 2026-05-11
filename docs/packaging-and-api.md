@@ -8,7 +8,7 @@
 
 | 镜像 | Dockerfile | 基础镜像 | 说明 |
 |---|---|---|---|
-| `mineru-enterprise/api` | `backend/Dockerfile` | `python:3.11-slim` | FastAPI 服务，含 LDAP 等系统依赖 |
+| `mineru-enterprise/api` | `backend/Dockerfile` | `ubuntu:22.04` | FastAPI 服务，含 LDAP 等系统依赖；Python 依赖安装到 `/opt/venv` |
 | `mineru-enterprise/worker` | `backend/Dockerfile.worker` | `python:3.11-slim` | Celery CPU Worker，含 PyTorch CPU 与 MinerU 依赖 |
 | `mineru-enterprise/worker-gpu` | `backend/Dockerfile.worker.gpu` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | Celery GPU Worker，PyTorch CUDA 12.4；模型运行时挂载 |
 | `mineru-enterprise/web` | `frontend/Dockerfile` | `node:20-alpine` | Next.js 14 前端，多阶段构建 standalone 输出 |
@@ -42,7 +42,8 @@ cd /path/to/mineru-web
 | `IMAGE_TAG` | `latest` | 镜像标签 |
 | `PLATFORM` | (空) | 跨平台构建，如 `linux/amd64` |
 | `PUSH` | `false` | 构建后推送 |
-| `PYTHON_BASE_IMAGE` | `python:3.11-slim` | Python 基础镜像 |
+| `API_BASE_IMAGE` | `ubuntu:22.04` | API Ubuntu 基础镜像 |
+| `PYTHON_BASE_IMAGE` | `python:3.11-slim` | CPU Worker Python 基础镜像 |
 | `NODE_BASE_IMAGE` | `node:20-alpine` | Node 基础镜像 |
 | `CUDA_BASE_IMAGE` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | CUDA 基础镜像 |
 | `TORCH_VERSION` | `2.7.0` | PyTorch 版本 |
@@ -50,7 +51,8 @@ cd /path/to/mineru-web
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 前端构建时 API 地址 |
 | `NEXT_PUBLIC_APP_NAME` | `MinerU Enterprise` | 前端构建时应用名 |
 | `APT_MIRROR` | (空) | 兼容旧用法的 apt 镜像兜底 |
-| `DEBIAN_APT_MIRROR` | (空) | Debian apt 镜像，用于 API/CPU Worker |
+| `API_UBUNTU_APT_MIRROR` | (空) | Ubuntu apt 镜像，用于 API 镜像 |
+| `DEBIAN_APT_MIRROR` | (空) | Debian apt 镜像，用于 CPU Worker |
 | `UBUNTU_APT_MIRROR` | (空) | Ubuntu apt 镜像，用于 GPU Worker/CUDA 镜像 |
 | `ALPINE_MIRROR` | (空) | Alpine apk 镜像，用于 Web/Nginx |
 | `PIP_INDEX_URL` | (空) | pip 镜像 |
@@ -61,6 +63,7 @@ cd /path/to/mineru-web
 ```bash
 IMAGE_REPOSITORY=registry.example.com/mineru \
 IMAGE_TAG=v1.2.0 \
+API_UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
 DEBIAN_APT_MIRROR=https://mirrors.aliyun.com/debian \
 UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
 ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \

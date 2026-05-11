@@ -2,9 +2,9 @@ x-backend-build: &backend-build
   context: ./backend
   dockerfile: Dockerfile
   args:
-    PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
+    API_BASE_IMAGE: ${API_BASE_IMAGE:-ubuntu:22.04}
     APT_MIRROR: ${APT_MIRROR:-}
-    DEBIAN_APT_MIRROR: ${DEBIAN_APT_MIRROR:-}
+    API_UBUNTU_APT_MIRROR: ${API_UBUNTU_APT_MIRROR:-}
     PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
 

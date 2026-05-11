@@ -39,6 +39,7 @@ ARG CUDA_VERSION=cu124
 ARG PYTORCH_INDEX_URL=
 RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
     && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then python3 -m pip config set global.extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
+    && python3 -m pip install --upgrade --break-system-packages pip setuptools wheel \
     && if [ -n "$PYTORCH_INDEX_URL" ]; then \
         python3 -m pip install --no-cache-dir --break-system-packages torch==${TORCH_VERSION} torchvision --extra-index-url "$PYTORCH_INDEX_URL"; \
     else \

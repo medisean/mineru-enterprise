@@ -159,9 +159,9 @@ bash scripts/build-images.sh all
 构建时可以按服务切换基础镜像和依赖源：
 
 ```bash
-# API / CPU Worker: Python 基础镜像、Debian apt 源、pip 源
-PYTHON_BASE_IMAGE=registry.example.com/library/python:3.11-slim \
-DEBIAN_APT_MIRROR=https://mirrors.aliyun.com/debian \
+# API: Ubuntu 基础镜像、Ubuntu apt 源、pip 源
+API_BASE_IMAGE=registry.example.com/library/ubuntu:22.04 \
+API_UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
 PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
 bash scripts/build-images.sh api
 
