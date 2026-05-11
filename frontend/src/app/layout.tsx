@@ -1,9 +1,24 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "@/components/ui/providers";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = localFont({
+  src: [
+    {
+      path: "./fonts/InterVariable.woff2",
+      style: "normal",
+      weight: "100 900",
+    },
+    {
+      path: "./fonts/InterVariable-Italic.woff2",
+      style: "italic",
+      weight: "100 900",
+    },
+  ],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_APP_NAME || "MinerU",
