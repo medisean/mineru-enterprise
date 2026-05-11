@@ -48,8 +48,6 @@ ENV HF_HOME=/opt/mineru-models/huggingface \
     HUGGINGFACE_HUB_CACHE=/opt/mineru-models/huggingface/hub \
     TRANSFORMERS_CACHE=/opt/mineru-models/huggingface/hub
 
-COPY mineru-models/ /opt/mineru-models/
-
 COPY . .
 
 CMD ["celery", "-A", "app.workers.parse_worker.celery_app", "worker", "-Q", "parse_cpu", "-c", "1", "--loglevel=info"]

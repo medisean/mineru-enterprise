@@ -9,8 +9,8 @@
 | 镜像 | Dockerfile | 基础镜像 | 说明 |
 |---|---|---|---|
 | `mineru-enterprise/api` | `backend/Dockerfile` | `python:3.11-slim` | FastAPI 服务，含 LDAP 等系统依赖 |
-| `mineru-enterprise/worker` | `backend/Dockerfile.worker` | `python:3.11-slim` | Celery CPU Worker，内置 PyTorch CPU + MinerU 模型 |
-| `mineru-enterprise/worker-gpu` | `backend/Dockerfile.worker.gpu` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | Celery GPU Worker，PyTorch CUDA 12.4 + MinerU 模型 |
+| `mineru-enterprise/worker` | `backend/Dockerfile.worker` | `python:3.11-slim` | Celery CPU Worker，含 PyTorch CPU 与 MinerU 依赖 |
+| `mineru-enterprise/worker-gpu` | `backend/Dockerfile.worker.gpu` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | Celery GPU Worker，PyTorch CUDA 12.4；模型运行时挂载 |
 | `mineru-enterprise/web` | `frontend/Dockerfile` | `node:20-alpine` | Next.js 14 前端，多阶段构建 standalone 输出 |
 | `mineru-enterprise/nginx` | `docker/Dockerfile.nginx` | `nginx:1.27-alpine` | 反向代理，含 WebSocket 支持 |
 
@@ -23,8 +23,8 @@ cd /path/to/mineru-web
 # 构建单个镜像
 ./scripts/build-images.sh api
 ./scripts/build-images.sh web
-./scripts/build-images.sh worker        # 需要 backend/mineru-models/ 和 backend/mineru.json
-./scripts/build-images.sh worker-gpu    # 同上
+./scripts/build-images.sh worker
+./scripts/build-images.sh worker-gpu
 ./scripts/build-images.sh nginx
 
 # 构建 CPU 全套（api + web + worker + nginx）
@@ -70,14 +70,21 @@ PUSH=true \
 ./scripts/build-images.sh all
 ```
 
-### 1.4 Worker 镜像前置条件
+### 1.4 Worker 模型挂载
 
-构建 `worker` / `worker-gpu` 前，必须准备：
+GPU worker 镜像不包含 MinerU 模型文件。生产环境启动前，在主机准备模型目录和配置文件：
 
-1. **`backend/mineru-models/`** — MinerU 模型文件目录（非空，不能只有 README.md）
-2. **`backend/mineru.json`** — MinerU 模型配置文件（会被 COPY 到 `/root/mineru.json`）
+```bash
+MINERU_MODELS_HOST_PATH=/data/mineru-models
+MINERU_CONFIG_HOST_PATH=/data/mineru.json
+```
 
-缺少时会直接报错退出。
+Compose 会把它们挂载到容器内：
+
+```text
+/opt/mineru-models
+/root/mineru.json
+```
 
 ### 1.5 部署启动
 

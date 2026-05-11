@@ -82,25 +82,6 @@ push_image() {
   fi
 }
 
-check_mineru_model_bundle() {
-  if [[ ! -d "$ROOT_DIR/backend/mineru-models" ]]; then
-    echo "ERROR: backend/mineru-models/ is required for worker image builds." >&2
-    echo "Place your pre-downloaded MinerU model files there before building worker images." >&2
-    exit 1
-  fi
-  if ! find "$ROOT_DIR/backend/mineru-models" -mindepth 1 \
-    ! -name ".gitkeep" ! -name "README.md" | grep -q .; then
-    echo "ERROR: backend/mineru-models/ does not contain model files." >&2
-    echo "Only placeholder files were found. Copy the real MinerU model files into this directory." >&2
-    exit 1
-  fi
-  if [[ ! -f "$ROOT_DIR/backend/mineru.json" ]]; then
-    echo "ERROR: backend/mineru.json is required for worker image builds." >&2
-    echo "It will be copied to /root/mineru.json inside the worker image." >&2
-    exit 1
-  fi
-}
-
 build_api() {
   local image="${IMAGE_REPOSITORY}/api:${IMAGE_TAG}"
   docker_cmd \
@@ -151,7 +132,6 @@ build_worker() {
 
 build_worker_gpu() {
   local image="${IMAGE_REPOSITORY}/worker-gpu:${IMAGE_TAG}"
-  check_mineru_model_bundle
   docker_cmd \
     --build-arg "CUDA_BASE_IMAGE=${CUDA_BASE_IMAGE}" \
     --build-arg "APT_MIRROR=${APT_MIRROR}" \

@@ -11,4 +11,5 @@ htmlcov/
 .env.*
 !.env.example
 alembic/versions/__pycache__/
-
+mineru-models/
+mineru.json

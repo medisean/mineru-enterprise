@@ -49,16 +49,13 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url 
 COPY requirements.txt requirements-worker.txt ./
 RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements-worker.txt
 
-# ── Bundle pre-downloaded MinerU models for offline production ───────────────
+# ── Runtime-mounted MinerU model paths ───────────────────────────────────────
 ENV HF_HOME=/opt/mineru-models/huggingface \
     HUGGINGFACE_HUB_CACHE=/opt/mineru-models/huggingface/hub \
     TRANSFORMERS_CACHE=/opt/mineru-models/huggingface/hub \
     MINERU_MODEL_SOURCE=local \
     HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
-
-COPY mineru-models/ /opt/mineru-models/
-COPY mineru.json /root/mineru.json
 
 COPY . .
 RUN chmod +x /app/scripts/start-gpu-worker.sh

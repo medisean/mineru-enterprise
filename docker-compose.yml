@@ -184,6 +184,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models:ro
+      - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
     command: /app/scripts/start-gpu-worker.sh
     deploy:
       resources:

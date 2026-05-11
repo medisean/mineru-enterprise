@@ -204,14 +204,14 @@ TORCH_VERSION=2.7.0 bash scripts/build-images.sh worker
 CUDA_VERSION=cu124 bash scripts/build-images.sh worker-gpu
 ```
 
-`worker` 和 `worker-gpu` 不在构建阶段下载 MinerU 模型。构建前需要准备本地模型包：
+`worker` 和 `worker-gpu` 不在构建阶段下载 MinerU 模型。GPU worker 镜像也不会把模型打进去，生产运行时从主机挂载：
 
 ```text
-backend/mineru-models/   # 已下载好的 MinerU 模型文件
-backend/mineru.json      # MinerU 本地模型配置
+MINERU_MODELS_HOST_PATH=/data/mineru-models
+MINERU_CONFIG_HOST_PATH=/data/mineru.json
 ```
 
-构建时会把 `backend/mineru-models/` 复制到镜像内 `/opt/mineru-models/`，并把 `backend/mineru.json` 复制到镜像内 `/root/mineru.json`。运行时默认设置 `MINERU_MODEL_SOURCE=local`、`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1`，不会尝试联网下载模型。
+容器内固定挂载到 `/opt/mineru-models` 和 `/root/mineru.json`。运行时默认设置 `MINERU_MODEL_SOURCE=local`、`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1`，不会尝试联网下载模型。
 
 `docker-compose.yml` 也已绑定同一套镜像变量。构建或部署指定版本：
 
