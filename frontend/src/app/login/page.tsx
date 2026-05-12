@@ -9,15 +9,16 @@ import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { authApi } from "@/lib/api";
 import { startSSOLogin } from "@/lib/sso";
+import { isRuntimeEnabled } from "@/lib/runtime-config";
 import { Loader2, FileText } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
 const SSO_PROVIDERS = [
-  { id: "oidc", labelKey: "login.ssoOidc", enabled: process.env.NEXT_PUBLIC_OIDC_ENABLED === "true" },
-  { id: "oauth2", labelKey: "login.ssoOAuth2", enabled: process.env.NEXT_PUBLIC_OAUTH2_ENABLED === "true" },
-  { id: "wechat_work", labelKey: "login.ssoWechatWork", enabled: process.env.NEXT_PUBLIC_WECHAT_WORK_ENABLED === "true" },
-  { id: "dingtalk", labelKey: "login.ssoDingtalk", enabled: process.env.NEXT_PUBLIC_DINGTALK_ENABLED === "true" },
-];
+  { id: "oidc", labelKey: "login.ssoOidc", flag: "NEXT_PUBLIC_OIDC_ENABLED" },
+  { id: "oauth2", labelKey: "login.ssoOAuth2", flag: "NEXT_PUBLIC_OAUTH2_ENABLED" },
+  { id: "wechat_work", labelKey: "login.ssoWechatWork", flag: "NEXT_PUBLIC_WECHAT_WORK_ENABLED" },
+  { id: "dingtalk", labelKey: "login.ssoDingtalk", flag: "NEXT_PUBLIC_DINGTALK_ENABLED" },
+] as const;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -100,7 +101,7 @@ export default function LoginPage() {
     }
   };
 
-  const enabledSSOProviders = SSO_PROVIDERS.filter((p) => p.enabled);
+  const enabledSSOProviders = SSO_PROVIDERS.filter((p) => isRuntimeEnabled(p.flag));
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

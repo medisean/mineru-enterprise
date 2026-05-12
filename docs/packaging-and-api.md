@@ -48,8 +48,8 @@ cd /path/to/mineru-web
 | `CUDA_BASE_IMAGE` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | CUDA 基础镜像 |
 | `TORCH_VERSION` | `2.7.0` | PyTorch 版本 |
 | `CUDA_VERSION` | `cu124` | CUDA wheel 后缀 |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 前端构建时 API 地址 |
-| `NEXT_PUBLIC_APP_NAME` | `MinerU Enterprise` | 前端构建时应用名 |
+| `NEXT_PUBLIC_API_URL` | (空) | 前端运行时 API 地址，留空表示使用当前域名 |
+| `NEXT_PUBLIC_APP_NAME` | `MinerU Enterprise` | 前端运行时应用名 |
 | `APT_MIRROR` | (空) | 兼容旧用法的 apt 镜像兜底 |
 | `API_UBUNTU_APT_MIRROR` | (空) | Ubuntu apt 镜像，用于 API 镜像 |
 | `DEBIAN_APT_MIRROR` | (空) | Debian apt 镜像，用于 CPU Worker |

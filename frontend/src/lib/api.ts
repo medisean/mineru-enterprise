@@ -2,9 +2,10 @@
  * API client — axios wrapper with auth token injection.
  */
 import axios from "axios";
+import { getApiBaseUrl } from "@/lib/runtime-config";
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL + "/api/v1",
+  baseURL: getApiBaseUrl(),
   headers: { "Content-Type": "application/json" },
 });
 
@@ -26,7 +27,7 @@ apiClient.interceptors.response.use(
       if (refreshToken) {
         try {
           const res = await axios.post(
-            process.env.NEXT_PUBLIC_API_URL + "/api/v1/auth/refresh",
+            `${getApiBaseUrl()}/auth/refresh`,
             { refresh_token: refreshToken }
           );
           localStorage.setItem("access_token", res.data.access_token);

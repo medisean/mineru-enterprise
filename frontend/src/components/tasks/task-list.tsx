@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 import { apiClient } from "@/lib/api";
+import { getWebSocketBaseUrl } from "@/lib/runtime-config";
 import {
   CheckCircle2, XCircle, Clock, Loader2, FileText,
   FileSpreadsheet, FileImage, File,
@@ -131,7 +132,7 @@ function TaskRow({
     if (task.status !== "pending" && task.status !== "processing") return;
 
     const token = localStorage.getItem("access_token");
-    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace("http", "ws")}/api/v1/ws/tasks/${task.id}?token=${token}`;
+    const wsUrl = `${getWebSocketBaseUrl()}/api/v1/ws/tasks/${task.id}?token=${token}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

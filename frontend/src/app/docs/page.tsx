@@ -5,8 +5,9 @@ import {
   ArrowLeft, BookOpen, CheckCircle2, Code2, KeyRound, Link2, RefreshCw,
   ShieldCheck, UploadCloud, Webhook,
 } from "lucide-react";
+import { getApiOrigin } from "@/lib/runtime-config";
 
-const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_ORIGIN = getApiOrigin() || "http://localhost:8000";
 const API_BASE = `${API_ORIGIN}/api/v1`;
 const PRECISION_BASE = `${API_ORIGIN}/api/v4`;
 const AGENT_BASE = `${API_ORIGIN}/api/v1/agent`;

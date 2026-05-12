@@ -188,13 +188,20 @@ ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
 bash scripts/build-images.sh nginx
 ```
 
-前端镜像会在构建时固化 `NEXT_PUBLIC_API_URL`：
+前端 API 地址在容器启动时从环境变量注入，同一个 Web 镜像可以复用到不同环境：
 
 ```bash
-NEXT_PUBLIC_API_URL=https://api.example.com \
 IMAGE_REPOSITORY=registry.example.com/mineru \
 IMAGE_TAG=v1.0.0 \
 bash scripts/build-images.sh web
+```
+
+生产启动时通过 `.env` 控制浏览器访问的 API 地址；留空表示使用当前域名，由 Nginx 反代 `/api`：
+
+```bash
+NEXT_PUBLIC_API_URL=
+# 或者显式指定
+NEXT_PUBLIC_API_URL=https://mineru.example.com
 ```
 
 Worker 镜像支持构建参数：

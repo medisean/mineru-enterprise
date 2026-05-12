@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
+import { getWebSocketBaseUrl } from "@/lib/runtime-config";
 import {
   LogOut, FileText, Plus, Loader2, PanelLeftClose, PanelLeftOpen,
   CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
@@ -74,7 +75,7 @@ export default function DashboardLayout({
       if (wsRefs.current.has(task.id)) return; // already connected
 
       const token = localStorage.getItem("access_token");
-      const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace("http", "ws")}/api/v1/ws/tasks/${task.id}?token=${token}`;
+      const wsUrl = `${getWebSocketBaseUrl()}/api/v1/ws/tasks/${task.id}?token=${token}`;
       const ws = new WebSocket(wsUrl);
       wsRefs.current.set(task.id, ws);
 
