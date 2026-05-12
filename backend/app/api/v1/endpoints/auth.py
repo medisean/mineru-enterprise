@@ -5,7 +5,7 @@ import secrets
 import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.database import get_db
 from app.core.security import (
@@ -13,7 +13,7 @@ from app.core.security import (
     create_access_token, create_refresh_token, decode_token,
 )
 from app.core.config import settings
-from app.models.models import User, SSOProvider
+from app.models.models import User, UserRole, SSOProvider
 from app.schemas.schemas import LoginRequest, TokenResponse, RefreshRequest, UserCreate, UserOut, SSOCallbackRequest
 from app.services.sso import oidc_provider, oauth2_provider, wechat_work_oauth, dingtalk_oauth, ldap_service
 
@@ -101,11 +101,16 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email or username already taken")
 
+    user_count = await db.scalar(select(func.count(User.id)))
+    is_first_user = (user_count or 0) == 0
+
     user = User(
         email=payload.email,
         username=payload.username,
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
+        role=UserRole.ADMIN if is_first_user else UserRole.MEMBER,
+        is_superuser=is_first_user,
         sso_provider=SSOProvider.LOCAL,
     )
     db.add(user)
