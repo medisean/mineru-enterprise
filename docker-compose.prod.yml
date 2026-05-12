@@ -5,8 +5,8 @@
 #
 # What this does:
 #   1. Forces ALL parse tasks to the GPU queue (FORCE_GPU_QUEUE=true)
-#   2. Disables the CPU worker (scale to 0)
-#   3. Enables the GPU worker via --profile gpu
+#   2. Keeps the CPU worker behind the optional "cpu" profile
+#   3. Enables only the GPU worker via --profile gpu
 #   4. Starts Nginx reverse proxy
 
 services:
@@ -15,9 +15,8 @@ services:
       FORCE_GPU_QUEUE: "true"
 
   worker:
-    # Disable CPU worker in production — scale to 0
-    deploy:
-      replicas: 0
+    # Production does not start the CPU worker unless --profile cpu is passed.
+    profiles: ["cpu"]
 
   worker-gpu:
     # Enabled in production by passing --profile gpu.
