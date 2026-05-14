@@ -7,7 +7,7 @@
 #   1. Forces ALL parse tasks to the GPU queue (FORCE_GPU_QUEUE=true)
 #   2. Keeps the CPU worker behind the optional "cpu" profile
 #   3. Enables only the GPU worker via --profile gpu
-#   4. Starts Nginx reverse proxy
+#   4. Starts Nginx reverse proxy with the same gpu profile
 
 services:
   api:
@@ -23,4 +23,4 @@ services:
     profiles: ["gpu"]
 
   nginx:
-    profiles: []
+    profiles: ["gpu"]

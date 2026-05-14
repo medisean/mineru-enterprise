@@ -37,6 +37,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
+        <Script src="/browser-polyfills.js" strategy="beforeInteractive" />
         <Script src="/runtime-config.js" strategy="beforeInteractive" />
       </head>
       <body className={inter.className}>

@@ -2,6 +2,7 @@
 File upload & parse task endpoints.
 """
 import io
+import re
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -28,6 +29,8 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 ACTIVE_QUEUE_STATUSES = (TaskStatus.PENDING, TaskStatus.PROCESSING)
+RESULT_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
+MARKDOWN_IMAGE_PATTERN = re.compile(r"(!\[[^\]]*\]\()([^)\s]+)(\))")
 
 
 async def _queued_ahead(db: AsyncSession, task: ParseTask) -> Optional[int]:
@@ -78,6 +81,29 @@ def _dispatch_existing_task(task: ParseTask) -> str:
         "parse_options": None,
         "run_attempt": task.run_attempt,
     })
+
+
+def _rewrite_markdown_image_urls(markdown: str, output_s3_prefix: str, image_urls: dict[str, str]) -> str:
+    def replace(match: re.Match) -> str:
+        prefix, src, suffix = match.groups()
+        if src.startswith(("http://", "https://", "data:", "blob:", "/")):
+            return match.group(0)
+
+        normalized = src.lstrip("./")
+        candidates = [
+            normalized,
+            normalized.split("/")[-1],
+            f"{output_s3_prefix}/{normalized}",
+            f"{output_s3_prefix}/{normalized.split('/')[-1]}",
+        ]
+
+        for candidate in candidates:
+            url = image_urls.get(candidate)
+            if url:
+                return f"{prefix}{url}{suffix}"
+        return match.group(0)
+
+    return MARKDOWN_IMAGE_PATTERN.sub(replace, markdown)
 
 
 # ── Step 1: Request presigned upload URL ─────────────────────────────────────
@@ -614,6 +640,20 @@ async def get_task_preview(
     if markdown_content:
         from app.services.markdown_utils import convert_html_tables_to_markdown
         markdown_content = convert_html_tables_to_markdown(markdown_content)
+        image_urls = {}
+        for obj in objects:
+            key = obj["key"]
+            filename = key.rsplit("/", 1)[-1]
+            ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if ext in RESULT_IMAGE_EXTENSIONS:
+                url = storage_service.generate_download_presigned_url(
+                    key,
+                    filename=filename,
+                    inline_disposition=True,
+                )
+                image_urls[key] = url
+                image_urls[filename] = url
+        markdown_content = _rewrite_markdown_image_urls(markdown_content, task.output_s3_prefix, image_urls)
 
     # Determine primary format for backwards compat
     if markdown_content:
