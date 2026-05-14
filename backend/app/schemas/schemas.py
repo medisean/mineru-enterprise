@@ -144,6 +144,7 @@ class TaskOut(BaseModel):
     file_size_bytes: int
     status: str
     progress: int
+    is_favorite: bool = False
     backend: str
     output_format: str
     data_id: Optional[str] = None
@@ -166,6 +167,10 @@ class TaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TaskFavoriteRequest(BaseModel):
+    is_favorite: bool
 
 
 class TaskResultFile(BaseModel):

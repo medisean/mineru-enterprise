@@ -8,7 +8,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import DOMPurify from "dompurify";
@@ -16,7 +16,7 @@ import { apiClient } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
   AlertCircle, RotateCcw, ZoomIn, ZoomOut,
-  FileSpreadsheet, Square,
+  FileSpreadsheet, Square, Star,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
@@ -39,6 +39,7 @@ interface TaskDetail {
   file_size_bytes: number;
   status: string;
   progress: number;
+  is_favorite?: boolean;
   backend: string;
   output_format: string;
   language: string;
@@ -102,6 +103,7 @@ function getOfficeFileType(filename: string) {
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const t = useT();
   const dateLocale = useI18nStore((s) => s.locale) === "zh" ? zhCN : enUS;
 
@@ -116,6 +118,7 @@ export default function TaskDetailPage() {
   const [copied, setCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [favoriting, setFavoriting] = useState(false);
   const [zoom, setZoom] = useState(100);
 
   // Scroll sync refs
@@ -201,6 +204,21 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleFavorite = async () => {
+    if (!task || favoriting) return;
+    setFavoriting(true);
+    try {
+      await apiClient.patch(`/tasks/${taskId}/favorite`, { is_favorite: !task.is_favorite });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+    } catch {
+      alert(t("tasks.favoriteFailed"));
+    } finally {
+      setFavoriting(false);
+    }
+  };
+
   // ── Scroll sync (one-way: left → right only) ──────────────────────────
   const handleLeftScroll = useCallback(() => {
     const srcEl = leftScrollRef.current;
@@ -263,10 +281,28 @@ export default function TaskDetailPage() {
                   </p>
                 </div>
               </div>
-              <span className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${statusCfg.color}`}>
-                {task.status === "processing" && <Loader2 className="h-3 w-3 animate-spin inline mr-1" />}
-                {statusCfg.label}
-              </span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={handleFavorite}
+                  disabled={favoriting}
+                  className={`inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors disabled:opacity-50 ${
+                    task.is_favorite
+                      ? "text-amber-500 bg-amber-50 hover:bg-amber-100"
+                      : "text-gray-300 bg-gray-50 hover:text-amber-500 hover:bg-amber-50"
+                  }`}
+                  title={task.is_favorite ? t("tasks.unfavorite") : t("tasks.favorite")}
+                >
+                  {favoriting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Star className={`h-4 w-4 ${task.is_favorite ? "fill-amber-400" : ""}`} />
+                  )}
+                </button>
+                <span className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap ${statusCfg.color}`}>
+                  {task.status === "processing" && <Loader2 className="h-3 w-3 animate-spin inline mr-1" />}
+                  {statusCfg.label}
+                </span>
+              </div>
             </div>
 
             {task.status === "processing" && (
@@ -358,6 +394,23 @@ export default function TaskDetailPage() {
           <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${statusCfg.color}`}>{statusCfg.label}</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleFavorite}
+            disabled={favoriting}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+              task.is_favorite
+                ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                : "text-gray-500 bg-gray-50 hover:text-amber-600 hover:bg-amber-50"
+            }`}
+            title={task.is_favorite ? t("tasks.unfavorite") : t("tasks.favorite")}
+          >
+            {favoriting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Star className={`h-3.5 w-3.5 ${task.is_favorite ? "fill-amber-400" : ""}`} />
+            )}
+            {task.is_favorite ? t("tasks.unfavorite") : t("tasks.favorite")}
+          </button>
           {results?.files?.length > 0 && (
             <button
               onClick={handleDownloadAll}

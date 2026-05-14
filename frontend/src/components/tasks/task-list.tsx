@@ -11,7 +11,7 @@ import {
   CheckCircle2, XCircle, Clock, Loader2, FileText,
   FileSpreadsheet, FileImage, File,
   ChevronLeft, ChevronRight, ChevronDown, Search, RotateCcw, Trash2,
-  Download, X, AlertTriangle, Square,
+  Download, X, AlertTriangle, Square, Star,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useT } from "@/lib/i18n/use-translation";
@@ -22,6 +22,7 @@ interface Task {
   file_size_bytes: number;
   status: string;
   progress: number;
+  is_favorite?: boolean;
   backend: string;
   output_format: string;
   language: string;
@@ -126,6 +127,7 @@ function TaskRow({
   const wsRef = useRef<WebSocket | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [favoriting, setFavoriting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -193,6 +195,23 @@ function TaskRow({
     e.stopPropagation();
     if (deleting) return;
     onDeleteRequest(task.id, task.original_filename);
+  };
+
+  const handleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (favoriting) return;
+    setFavoriting(true);
+    try {
+      await tasksApi.setFavorite(task.id, !task.is_favorite);
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["task", task.id] });
+      queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+    } catch {
+      alert(t("tasks.favoriteFailed"));
+    } finally {
+      setFavoriting(false);
+    }
   };
 
   const statusCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
@@ -273,6 +292,22 @@ function TaskRow({
       {/* Actions */}
       <td className="py-4 pr-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-1">
+          <button
+            onClick={handleFavorite}
+            disabled={favoriting}
+            className={`inline-flex items-center text-xs p-1 rounded transition-colors disabled:opacity-50 ${
+              task.is_favorite
+                ? "text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                : "text-gray-300 hover:text-amber-500 hover:bg-amber-50"
+            }`}
+            title={task.is_favorite ? t("tasks.unfavorite") : t("tasks.favorite")}
+          >
+            {favoriting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Star className={`h-3.5 w-3.5 ${task.is_favorite ? "fill-amber-400" : ""}`} />
+            )}
+          </button>
           {(task.status === "pending" || task.status === "processing") && (
             <button
               onClick={handleStop}
@@ -312,6 +347,7 @@ export function TaskList() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -335,7 +371,7 @@ export function TaskList() {
   }, [searchQuery]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["tasks", page, pageSize, statusFilter, debouncedSearch],
+    queryKey: ["tasks", page, pageSize, statusFilter, debouncedSearch, favoriteOnly],
     queryFn: () =>
       tasksApi
         .list({
@@ -343,6 +379,7 @@ export function TaskList() {
           page_size: pageSize,
           status: statusFilter || undefined,
           keyword: debouncedSearch || undefined,
+          favorite: favoriteOnly || undefined,
         })
         .then((r: { data: { items: Task[]; total: number } }) => r.data),
     refetchInterval: (query) => {
@@ -357,7 +394,7 @@ export function TaskList() {
   // Clear selection when page/filter changes
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page, statusFilter, debouncedSearch]);
+  }, [page, statusFilter, debouncedSearch, favoriteOnly]);
 
   const items = data?.items ?? [];
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
@@ -475,8 +512,28 @@ export function TaskList() {
   return (
     <div className="space-y-4">
       {/* Title + Search & Filter bar */}
-      <div className="flex items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">{t("tasks.allTasks")}</h2>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">{t("tasks.taskManagement")}</h2>
+
+        <div className="inline-flex h-9 overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <button
+            onClick={() => { setFavoriteOnly(false); setPage(1); }}
+            className={`px-3 text-sm transition-colors ${
+              !favoriteOnly ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            {t("tasks.allTasks")}
+          </button>
+          <button
+            onClick={() => { setFavoriteOnly(true); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 text-sm transition-colors ${
+              favoriteOnly ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Star className={`h-3.5 w-3.5 ${favoriteOnly ? "fill-current" : ""}`} />
+            {t("tasks.myFavorites")}
+          </button>
+        </div>
 
         {/* Search input */}
         <div className="relative flex-1 max-w-xs">
@@ -538,7 +595,9 @@ export function TaskList() {
         <div className="text-center py-12">
           <FileText className="mx-auto h-10 w-10 text-gray-200 mb-3" />
           <p className="text-sm text-gray-400">
-            {debouncedSearch
+            {favoriteOnly && !debouncedSearch && !statusFilter
+              ? t("tasks.noFavorites")
+              : debouncedSearch
               ? t("tasks.noTasksMatched")
               : statusFilter
                 ? t("tasks.noTasksFiltered", { status: t(STATUS_FILTERS.find(f => f.value === statusFilter)!.labelKey) })

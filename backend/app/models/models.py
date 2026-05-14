@@ -119,6 +119,7 @@ class ParseTask(Base):
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
     last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     run_attempt: Mapped[int] = mapped_column(Integer, default=0)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
     # Webhook callback
     callback_url: Mapped[str] = mapped_column(String(1024), nullable=True)       # URL to POST on completion
@@ -137,3 +138,4 @@ class ParseTask(Base):
 
 
 Index("ix_parse_tasks_user_batch", ParseTask.user_id, ParseTask.batch_id)
+Index("ix_parse_tasks_user_favorite", ParseTask.user_id, ParseTask.is_favorite)

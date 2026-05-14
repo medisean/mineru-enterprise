@@ -19,7 +19,7 @@ from app.models.models import User, ParseTask, TaskStatus
 from app.schemas.schemas import (
     PresignedUploadRequest, PresignedUploadResponse,
     CreateTaskRequest, TaskOut, TaskListResponse,
-    TaskResultResponse, TaskResultFile,
+    TaskResultResponse, TaskResultFile, TaskFavoriteRequest,
 )
 from app.services.storage import storage_service
 from app.services.file_validation import validate_file_magic
@@ -267,6 +267,7 @@ async def list_tasks(
     page_size: int = Query(20, ge=1, le=100),
     status: str = Query(None),
     keyword: str = Query(None, description="搜索文件名"),
+    favorite: bool = Query(False, description="仅查看收藏任务"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -275,6 +276,8 @@ async def list_tasks(
         q = q.where(ParseTask.status == TaskStatus(status))
     if keyword:
         q = q.where(ParseTask.original_filename.ilike(f"%{keyword}%"))
+    if favorite:
+        q = q.where(ParseTask.is_favorite.is_(True))
 
     count_q = select(func.count()).select_from(q.subquery())
     total = (await db.execute(count_q)).scalar()
@@ -283,6 +286,24 @@ async def list_tasks(
     tasks = (await db.execute(q)).scalars().all()
 
     return TaskListResponse(items=await _task_out_list(db, tasks), total=total, page=page, page_size=page_size)
+
+
+# ── Favorite / unfavorite task ───────────────────────────────────────────────
+@router.patch("/{task_id}/favorite", response_model=TaskOut)
+async def update_task_favorite(
+    task_id: str,
+    payload: TaskFavoriteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await db.get(ParseTask, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.is_favorite = payload.is_favorite
+    await db.commit()
+    await db.refresh(task)
+    return await _task_out(db, task)
 
 
 # ── Get single task ───────────────────────────────────────────────────────────

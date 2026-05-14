@@ -93,9 +93,11 @@ export const tasksApi: Record<string, Function> = {
     backend?: string;
     output_format?: string;
   }[]) => apiClient.post("/tasks/batch/tasks", tasks),
-  list: (params?: { page?: number; page_size?: number; status?: string; keyword?: string }) =>
+  list: (params?: { page?: number; page_size?: number; status?: string; keyword?: string; favorite?: boolean }) =>
     apiClient.get("/tasks/", { params }),
   get: (id: string) => apiClient.get(`/tasks/${id}`),
+  setFavorite: (id: string, isFavorite: boolean) =>
+    apiClient.patch(`/tasks/${id}/favorite`, { is_favorite: isFavorite }),
   getResults: (id: string) => apiClient.get(`/tasks/${id}/results`),
   getPreview: (id: string) => apiClient.get(`/tasks/${id}/preview`),
   cancel: (id: string) => apiClient.delete(`/tasks/${id}`),

@@ -90,6 +90,7 @@ const apiGroups = [
       ["POST", "/api/v1/tasks/", "创建单个解析任务"],
       ["GET", "/api/v1/tasks/", "分页查询当前用户任务"],
       ["GET", "/api/v1/tasks/{task_id}", "查询任务状态和基础信息"],
+      ["PATCH", "/api/v1/tasks/{task_id}/favorite", "收藏或取消收藏任务"],
       ["GET", "/api/v1/tasks/{task_id}/results", "获取解析结果下载链接"],
       ["GET", "/api/v1/tasks/{task_id}/preview", "获取页面预览数据"],
       ["POST", "/api/v1/tasks/{task_id}/retry", "重新解析失败或已停止任务"],

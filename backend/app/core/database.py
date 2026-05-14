@@ -3,6 +3,7 @@ Database setup — async SQLAlchemy with PostgreSQL.
 """
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 
 from app.core.config import settings
 
@@ -27,6 +28,12 @@ class Base(DeclarativeBase):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(
+            "ALTER TABLE parse_tasks ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_parse_tasks_user_favorite ON parse_tasks (user_id, is_favorite)"
+        ))
 
 
 async def get_db() -> AsyncSession:
