@@ -100,7 +100,7 @@ def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
         if zip_key:
             full_zip_url = storage_service.generate_download_presigned_url(
                 zip_key,
-                filename=f"{Path(task.original_filename).stem or task.id}.zip",
+                filename=_download_filename(task, "zip"),
             )
 
     if state == "running":
@@ -122,6 +122,18 @@ def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
 
 def _trace_id() -> str:
     return uuid.uuid4().hex
+
+
+def _download_timestamp(task: ParseTask) -> str:
+    dt = task.completed_at or task.created_at or datetime.now(timezone.utc)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y%m%d%H%M%S")
+
+
+def _download_filename(task: ParseTask, extension: str) -> str:
+    stem = Path(task.original_filename).stem or task.id
+    return f"{stem}_{_download_timestamp(task)}.{extension.lstrip('.')}"
 
 
 def _map_model_version(model_version: str | None) -> str:

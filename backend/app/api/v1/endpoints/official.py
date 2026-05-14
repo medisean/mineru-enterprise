@@ -14,6 +14,7 @@ import asyncio
 import base64
 import mimetypes
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -128,6 +129,18 @@ def _status_payload(task: ParseTask, request: Request) -> dict:
 def _content_type_for(filename: str) -> str:
     ext = _ext(filename)
     return mimetypes.guess_type(filename)[0] or CONTENT_TYPE_BY_EXTENSION.get(ext) or "application/octet-stream"
+
+
+def _download_timestamp(task: ParseTask) -> str:
+    dt = task.completed_at or task.created_at or datetime.now(timezone.utc)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y%m%d%H%M%S")
+
+
+def _download_filename(task: ParseTask, extension: str) -> str:
+    stem = Path(task.original_filename).stem or task.id
+    return f"{stem}_{_download_timestamp(task)}.{extension.lstrip('.')}"
 
 
 async def _save_upload_as_task(
@@ -403,7 +416,7 @@ async def official_get_task_result(
 
     if response_format_zip:
         data = _build_zip(task, return_original_file=return_original_file)
-        headers = {"Content-Disposition": f'attachment; filename="{task.id}.zip"'}
+        headers = {"Content-Disposition": f'attachment; filename="{_download_filename(task, "zip")}"'}
         return Response(content=data, media_type="application/zip", headers=headers)
 
     return {
@@ -469,7 +482,7 @@ async def official_file_parse(
     if response_format_zip:
         data = _build_zip(task, return_original_file=return_original_file and response_format_zip)
         headers = {
-            "Content-Disposition": f'attachment; filename="{task.id}.zip"',
+            "Content-Disposition": f'attachment; filename="{_download_filename(task, "zip")}"',
             "X-MinerU-Task-Id": task.id,
             "X-MinerU-Task-Status": _task_status(task),
             "X-MinerU-Task-Status-Url": _result_urls(task, request)[0],

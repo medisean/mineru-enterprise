@@ -148,6 +148,29 @@ def _guess_result_content_type(filename: str) -> str:
     }.get(ext, "application/octet-stream")
 
 
+def _download_timestamp(task: ParseTask) -> str:
+    dt = task.completed_at or task.created_at or datetime.now(timezone.utc)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y%m%d%H%M%S")
+
+
+def _filename_stem(filename: str) -> str:
+    name = filename.rsplit("/", 1)[-1].strip() or "result"
+    return name.rsplit(".", 1)[0] if "." in name else name
+
+
+def _download_filename(task: ParseTask, extension: str) -> str:
+    ext = extension.lower().lstrip(".") or "bin"
+    return f"{_filename_stem(task.original_filename)}_{_download_timestamp(task)}.{ext}"
+
+
+def _result_download_filename(task: ParseTask, object_key: str) -> str:
+    filename = object_key.rsplit("/", 1)[-1]
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else "bin"
+    return _download_filename(task, ext)
+
+
 # ── Step 1: Request presigned upload URL ─────────────────────────────────────
 @router.post("/upload-url", response_model=PresignedUploadResponse)
 async def get_upload_url(
@@ -302,9 +325,10 @@ async def get_source_url(
             objects = storage_service.list_objects(f"{task.output_s3_prefix}/_preview/")
             for obj in objects:
                 if obj["key"] == preview_key:
+                    filename = _download_filename(task, "pdf")
                     url = storage_service.generate_download_presigned_url(
                         preview_key,
-                        filename=task.original_filename.rsplit(".", 1)[0] + ".pdf",
+                        filename=filename,
                         inline_disposition=True,
                     )
                     return {"download_url": url, "preview_type": "pdf"}
@@ -336,7 +360,7 @@ async def get_task_results(
     objects = storage_service.list_objects(task.output_s3_prefix)
     files = []
     for obj in objects:
-        filename = obj["key"].split("/")[-1]
+        filename = _result_download_filename(task, obj["key"])
         files.append(TaskResultFile(
             filename=filename,
             s3_key=obj["key"],
@@ -392,8 +416,8 @@ async def batch_download(
 
             for obj in target_files:
                 original_name = obj["key"].split("/")[-1]
-                # Build a friendly filename: <task_filename_base>/<original_name>
-                base_name = task.original_filename.rsplit(".", 1)[0] if "." in task.original_filename else task.original_filename
+                # Build a friendly filename: <original_filename_stem>_<timestamp>/<result_file>
+                base_name = f"{_filename_stem(task.original_filename)}_{_download_timestamp(task)}"
 
                 # Handle duplicate folder names
                 if base_name in filename_counter:
