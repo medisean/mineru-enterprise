@@ -23,6 +23,7 @@ from app.schemas.schemas import (
 )
 from app.services.storage import storage_service
 from app.services.file_validation import validate_file_magic
+from app.services.official_result_exports import FULL_ZIP_NAME, ZIP_EXPORT_DIR
 from app.workers.parse_worker import dispatch_parse_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -104,6 +105,47 @@ def _rewrite_markdown_image_urls(markdown: str, output_s3_prefix: str, image_url
         return match.group(0)
 
     return MARKDOWN_IMAGE_PATTERN.sub(replace, markdown)
+
+
+def _sync_result_images_from_zip(output_s3_prefix: str, existing_keys: set[str]) -> list[dict]:
+    zip_key = f"{output_s3_prefix.rstrip('/')}/{ZIP_EXPORT_DIR}/{FULL_ZIP_NAME}"
+    try:
+        zip_data = storage_service.download_bytes(zip_key)
+    except Exception:
+        return []
+
+    synced = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                rel = info.filename.lstrip("/")
+                filename = rel.rsplit("/", 1)[-1]
+                ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+                if ext not in RESULT_IMAGE_EXTENSIONS:
+                    continue
+                key = f"{output_s3_prefix.rstrip('/')}/{rel}"
+                if key not in existing_keys:
+                    storage_service.upload_bytes(key, zf.read(info), _guess_result_content_type(filename))
+                    existing_keys.add(key)
+                synced.append({"key": key, "size": info.file_size, "last_modified": ""})
+    except Exception:
+        return []
+    return synced
+
+
+def _guess_result_content_type(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "webp": "image/webp",
+        "tiff": "image/tiff",
+    }.get(ext, "application/octet-stream")
 
 
 # ── Step 1: Request presigned upload URL ─────────────────────────────────────
@@ -640,6 +682,8 @@ async def get_task_preview(
     if markdown_content:
         from app.services.markdown_utils import convert_html_tables_to_markdown
         markdown_content = convert_html_tables_to_markdown(markdown_content)
+        object_keys = {obj["key"] for obj in objects}
+        objects.extend(_sync_result_images_from_zip(task.output_s3_prefix, object_keys))
         image_urls = {}
         for obj in objects:
             key = obj["key"]

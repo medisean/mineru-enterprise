@@ -3,6 +3,7 @@ Celery worker — MinerU document parsing tasks.
 """
 import os
 import io
+import zipfile
 import signal
 import tempfile
 import time
@@ -20,6 +21,8 @@ from app.services.official_result_exports import (
 from app.core.config import settings
 
 logger = structlog.get_logger(__name__)
+
+IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"}
 
 celery_app = Celery(
     "mineru_worker",
@@ -304,6 +307,9 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             full_zip_key = ensure_full_result_zip(storage_service, output_s3_prefix)
             if full_zip_key:
                 uploaded_files.append(full_zip_key)
+                uploaded_files.extend(
+                    upload_missing_images_from_zip(storage_service, full_zip_key, output_s3_prefix)
+                )
 
         os.unlink(tmp_path)
         update_task_status("success", progress=100, output_prefix=output_s3_prefix)
@@ -341,6 +347,31 @@ def _guess_content_type(filename: str) -> str:
         "tex": "application/x-latex",
     }
     return types.get(ext, "application/octet-stream")
+
+
+def upload_missing_images_from_zip(storage_service, zip_key: str, output_s3_prefix: str) -> list[str]:
+    uploaded: list[str] = []
+    try:
+        zip_data = storage_service.download_bytes(zip_key)
+    except Exception as e:
+        logger.warning("Failed to download result zip for image sync", zip_key=zip_key, error=str(e))
+        return uploaded
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                rel = info.filename.lstrip("/")
+                ext = rel.rsplit(".", 1)[-1].lower() if "." in rel else ""
+                if ext not in IMAGE_EXTENSIONS:
+                    continue
+                s3_key = f"{output_s3_prefix.rstrip('/')}/{rel}"
+                storage_service.upload_bytes(s3_key, zf.read(info), _guess_content_type(rel))
+                uploaded.append(s3_key)
+    except Exception as e:
+        logger.warning("Failed to sync images from result zip", zip_key=zip_key, error=str(e))
+    return uploaded
 
 
 def _bool_cli(value) -> str:
