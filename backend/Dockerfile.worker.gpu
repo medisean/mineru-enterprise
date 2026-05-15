@@ -37,6 +37,7 @@ RUN mirror="${UBUNTU_APT_MIRROR:-$APT_MIRROR}"; \
 ARG TORCH_VERSION=2.7.0
 ARG CUDA_VERSION=cu124
 ARG PYTORCH_INDEX_URL=
+RUN python3 -m pip install --upgrade pip setuptools wheel
 RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
     && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then python3 -m pip config set global.extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
     && python3 -m pip install --upgrade --break-system-packages pip setuptools wheel \
