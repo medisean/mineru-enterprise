@@ -342,12 +342,17 @@ function TaskRow({
   );
 }
 
-export function TaskList() {
+export function TaskList({
+  favoriteOnly = false,
+  titleKey = "tasks.allTasks",
+}: {
+  favoriteOnly?: boolean;
+  titleKey?: string;
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
-  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -513,27 +518,7 @@ export function TaskList() {
     <div className="space-y-4">
       {/* Title + Search & Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">{t("tasks.taskManagement")}</h2>
-
-        <div className="inline-flex h-9 overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <button
-            onClick={() => { setFavoriteOnly(false); setPage(1); }}
-            className={`px-3 text-sm transition-colors ${
-              !favoriteOnly ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            {t("tasks.allTasks")}
-          </button>
-          <button
-            onClick={() => { setFavoriteOnly(true); setPage(1); }}
-            className={`inline-flex items-center gap-1.5 px-3 text-sm transition-colors ${
-              favoriteOnly ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <Star className={`h-3.5 w-3.5 ${favoriteOnly ? "fill-current" : ""}`} />
-            {t("tasks.myFavorites")}
-          </button>
-        </div>
+        <h2 className="text-lg font-semibold text-gray-900 whitespace-nowrap">{t(titleKey)}</h2>
 
         {/* Search input */}
         <div className="relative flex-1 max-w-xs">

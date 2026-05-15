@@ -13,7 +13,7 @@ import { getWebSocketBaseUrl } from "@/lib/runtime-config";
 import {
   LogOut, FileText, Plus, Loader2, PanelLeftClose, PanelLeftOpen,
   CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
-  Shield, Users, Clock4,
+  Shield, Users, Clock4, Star,
 } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
@@ -165,8 +165,6 @@ export default function DashboardLayout({
 
   // Active nav detection
   const isTaskDetail = pathname.startsWith("/dashboard/tasks/");
-  const isUpload = pathname === "/dashboard" && !pathname.includes("/tasks");
-  const isTaskList = pathname === "/dashboard" && !isTaskDetail;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -222,8 +220,15 @@ export default function DashboardLayout({
             icon={<FileText className="h-4 w-4" />}
             label={t("sidebar.taskMgmt")}
             collapsed={collapsed}
-            active={pathname.startsWith("/dashboard/tasks") && !isTaskDetail}
-            href="/dashboard?tab=tasks"
+            active={pathname === "/dashboard/tasks"}
+            href="/dashboard/tasks"
+          />
+          <NavItem
+            icon={<Star className="h-4 w-4" />}
+            label={t("sidebar.myFavorites")}
+            collapsed={collapsed}
+            active={pathname === "/dashboard/favorites"}
+            href="/dashboard/favorites"
           />
           {/* Admin section — only for admins */}
           {(user?.role === "admin" || user?.is_superuser) && (

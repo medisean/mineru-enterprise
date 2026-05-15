@@ -7,6 +7,7 @@ export const zh: Record<string, string> = {
   "sidebar.expand": "展开侧边栏",
   "sidebar.newParse": "新解析",
   "sidebar.taskMgmt": "任务管理",
+  "sidebar.myFavorites": "我的收藏",
   "sidebar.recentTasks": "最近任务",
   "sidebar.noTasks": "暂无任务",
   "sidebar.logout": "退出登录",

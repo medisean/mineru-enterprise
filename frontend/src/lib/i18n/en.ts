@@ -7,6 +7,7 @@ export const en: Record<string, string> = {
   "sidebar.expand": "Expand sidebar",
   "sidebar.newParse": "New Parse",
   "sidebar.taskMgmt": "Tasks",
+  "sidebar.myFavorites": "My Favorites",
   "sidebar.recentTasks": "Recent Tasks",
   "sidebar.noTasks": "No tasks yet",
   "sidebar.logout": "Sign Out",

@@ -262,7 +262,7 @@ export default function TaskDetailPage() {
       <div className="h-screen bg-gray-50">
         <main className="max-w-3xl mx-auto p-8">
           <button
-            onClick={() => router.push("/dashboard?tab=tasks")}
+            onClick={() => router.push("/dashboard/tasks")}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -382,7 +382,7 @@ export default function TaskDetailPage() {
       <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
-            onClick={() => router.push("/dashboard?tab=tasks")}
+            onClick={() => router.push("/dashboard/tasks")}
             className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
