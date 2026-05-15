@@ -32,6 +32,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 ACTIVE_QUEUE_STATUSES = (TaskStatus.PENDING, TaskStatus.PROCESSING)
 RESULT_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 MARKDOWN_IMAGE_PATTERN = re.compile(r"(!\[[^\]]*\]\()([^)\s]+)(\))")
+HTML_IMAGE_SRC_PATTERN = re.compile(r"(<img\b[^>]*?\bsrc=[\"'])([^\"']+)([\"'][^>]*?>)", re.IGNORECASE)
 
 
 async def _queued_ahead(db: AsyncSession, task: ParseTask) -> Optional[int]:
@@ -84,27 +85,46 @@ def _dispatch_existing_task(task: ParseTask) -> str:
     })
 
 
-def _rewrite_markdown_image_urls(markdown: str, output_s3_prefix: str, image_urls: dict[str, str]) -> str:
-    def replace(match: re.Match) -> str:
+def _lookup_result_image_url(src: str, output_s3_prefix: str, image_urls: dict[str, str]) -> Optional[str]:
+    if src.startswith(("http://", "https://", "data:", "blob:", "/")):
+        return None
+
+    normalized = src.lstrip("./")
+    basename = normalized.split("/")[-1]
+    candidates = [
+        normalized,
+        basename,
+        f"{output_s3_prefix.rstrip('/')}/{normalized}",
+        f"{output_s3_prefix.rstrip('/')}/{basename}",
+    ]
+
+    for candidate in candidates:
+        url = image_urls.get(candidate)
+        if url:
+            return url
+
+    suffixes = (f"/{normalized}", f"/{basename}")
+    for key, url in image_urls.items():
+        if key.endswith(suffixes):
+            return url
+    return None
+
+
+def _rewrite_result_image_urls(markdown: str, output_s3_prefix: str, image_urls: dict[str, str]) -> str:
+    def replace_markdown(match: re.Match) -> str:
         prefix, src, suffix = match.groups()
         if src.startswith(("http://", "https://", "data:", "blob:", "/")):
             return match.group(0)
+        url = _lookup_result_image_url(src, output_s3_prefix, image_urls)
+        return f"{prefix}{url}{suffix}" if url else match.group(0)
 
-        normalized = src.lstrip("./")
-        candidates = [
-            normalized,
-            normalized.split("/")[-1],
-            f"{output_s3_prefix}/{normalized}",
-            f"{output_s3_prefix}/{normalized.split('/')[-1]}",
-        ]
+    def replace_html(match: re.Match) -> str:
+        prefix, src, suffix = match.groups()
+        url = _lookup_result_image_url(src, output_s3_prefix, image_urls)
+        return f"{prefix}{url}{suffix}" if url else match.group(0)
 
-        for candidate in candidates:
-            url = image_urls.get(candidate)
-            if url:
-                return f"{prefix}{url}{suffix}"
-        return match.group(0)
-
-    return MARKDOWN_IMAGE_PATTERN.sub(replace, markdown)
+    rewritten = MARKDOWN_IMAGE_PATTERN.sub(replace_markdown, markdown)
+    return HTML_IMAGE_SRC_PATTERN.sub(replace_html, rewritten)
 
 
 def _sync_result_images_from_zip(output_s3_prefix: str, existing_keys: set[str]) -> list[dict]:
@@ -742,7 +762,7 @@ async def get_task_preview(
                 )
                 image_urls[key] = url
                 image_urls[filename] = url
-        markdown_content = _rewrite_markdown_image_urls(markdown_content, task.output_s3_prefix, image_urls)
+        markdown_content = _rewrite_result_image_urls(markdown_content, task.output_s3_prefix, image_urls)
 
     # Determine primary format for backwards compat
     if markdown_content:
