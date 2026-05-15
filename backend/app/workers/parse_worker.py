@@ -19,6 +19,7 @@ from app.services.official_result_exports import (
 )
 
 from app.core.config import settings
+from app.core.schema_compat import try_ensure_sync_schema_compat
 
 logger = structlog.get_logger(__name__)
 
@@ -48,6 +49,7 @@ celery_app.conf.update(
 # ── Reusable DB engine for Celery worker ─────────────────────────────────
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from celery.signals import worker_process_init
 
 _sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
 _engine = create_engine(
@@ -60,12 +62,24 @@ _engine = create_engine(
 _SessionFactory = sessionmaker(_engine)
 
 
+def _ensure_worker_schema_compat(source: str = "parse_worker") -> None:
+    try_ensure_sync_schema_compat(_engine, source=source)
+
+
+_ensure_worker_schema_compat("parse_worker_import")
+
+
+@worker_process_init.connect
+def _on_worker_process_init(**_kwargs):
+    _ensure_worker_schema_compat("worker_process_init")
+
 
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
     """Shared parsing logic used by both CPU and GPU task variants."""
     import subprocess, json, glob
 
     # Use the module-level engine/session factory (connection pool is reused)
+    _ensure_worker_schema_compat("parse_task_start")
     Session = _SessionFactory
     run_attempt = int(config.get("run_attempt") or 0)
 
