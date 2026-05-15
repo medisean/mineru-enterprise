@@ -97,7 +97,7 @@ export const tasksApi: Record<string, Function> = {
     apiClient.get("/tasks/", { params }),
   get: (id: string) => apiClient.get(`/tasks/${id}`),
   setFavorite: (id: string, isFavorite: boolean) =>
-    apiClient.patch(`/tasks/${id}/favorite`, { is_favorite: isFavorite }),
+    apiClient.post(`/tasks/${id}/favorite`, { is_favorite: isFavorite }),
   getResults: (id: string) => apiClient.get(`/tasks/${id}/results`),
   getPreview: (id: string) => apiClient.get(`/tasks/${id}/preview`),
   cancel: (id: string) => apiClient.delete(`/tasks/${id}`),

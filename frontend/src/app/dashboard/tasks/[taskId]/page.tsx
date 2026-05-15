@@ -208,7 +208,7 @@ export default function TaskDetailPage() {
     if (!task || favoriting) return;
     setFavoriting(true);
     try {
-      await apiClient.patch(`/tasks/${taskId}/favorite`, { is_favorite: !task.is_favorite });
+      await apiClient.post(`/tasks/${taskId}/favorite`, { is_favorite: !task.is_favorite });
       await refetch();
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });

@@ -308,14 +308,12 @@ async def list_tasks(
     return TaskListResponse(items=await _task_out_list(db, tasks), total=total, page=page, page_size=page_size)
 
 
-# ── Favorite / unfavorite task ───────────────────────────────────────────────
-@router.patch("/{task_id}/favorite", response_model=TaskOut)
-async def update_task_favorite(
+async def _set_task_favorite(
     task_id: str,
     payload: TaskFavoriteRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+    current_user: User,
+    db: AsyncSession,
+) -> TaskOut:
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -324,6 +322,27 @@ async def update_task_favorite(
     await db.commit()
     await db.refresh(task)
     return await _task_out(db, task)
+
+
+# ── Favorite / unfavorite task ───────────────────────────────────────────────
+@router.post("/{task_id}/favorite", response_model=TaskOut)
+async def set_task_favorite(
+    task_id: str,
+    payload: TaskFavoriteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _set_task_favorite(task_id, payload, current_user, db)
+
+
+@router.patch("/{task_id}/favorite", response_model=TaskOut)
+async def update_task_favorite(
+    task_id: str,
+    payload: TaskFavoriteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _set_task_favorite(task_id, payload, current_user, db)
 
 
 # ── Get single task ───────────────────────────────────────────────────────────
