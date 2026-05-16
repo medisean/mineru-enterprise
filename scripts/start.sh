@@ -19,11 +19,14 @@ MODE=${1:-dev}
 
 case $MODE in
   dev)
-    echo "启动开发模式（含 MinIO）..."
-    docker compose --profile minio up -d
+    echo "启动开发模式（含 MinIO + Nginx 反向代理）..."
+    docker compose --profile minio --profile proxy up -d
     echo -e "${GREEN}✅ 服务已启动${NC}"
-    echo "  前端:      http://localhost:3000"
-    echo "  API:       http://localhost:8000/api/docs"
+    echo "  统一入口:  http://localhost"
+    echo "  前端:      http://localhost"
+    echo "  API:       http://localhost/api/docs"
+    echo "  直连前端:  http://localhost:3000"
+    echo "  直连 API:  http://localhost:8000"
     echo "  MinIO:     http://localhost:9001"
     ;;
   prod)
@@ -36,10 +39,13 @@ case $MODE in
     ;;
   gpu)
     echo "启动 GPU 模式（需要 nvidia-container-toolkit）..."
-    docker compose --profile minio --profile gpu up -d
+    docker compose --profile minio --profile gpu --profile proxy up -d
     echo -e "${GREEN}✅ 服务已启动（GPU 加速）${NC}"
-    echo "  前端:      http://localhost:3000"
-    echo "  API:       http://localhost:8000/api/docs"
+    echo "  统一入口:  http://localhost"
+    echo "  前端:      http://localhost"
+    echo "  API:       http://localhost/api/docs"
+    echo "  直连前端:  http://localhost:3000"
+    echo "  直连 API:  http://localhost:8000"
     echo "  MinIO:     http://localhost:9001"
     echo "  GPU Worker: 已启用 (MINERU_DEVICE=cuda)"
     ;;
@@ -49,7 +55,7 @@ case $MODE in
     echo "  Flower:    http://localhost:5555"
     ;;
   down)
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile minio --profile monitoring --profile production --profile gpu down
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile minio --profile monitoring --profile production --profile proxy --profile gpu down
     ;;
   *)
     echo "用法: ./scripts/start.sh [dev|prod|gpu|monitor|down]"

@@ -5,11 +5,11 @@ import axios from "axios";
 import { getApiBaseUrl } from "@/lib/runtime-config";
 
 const apiClient = axios.create({
-  baseURL: getApiBaseUrl(),
   headers: { "Content-Type": "application/json" },
 });
 
 apiClient.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl();
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("access_token");
     if (token) {
@@ -32,6 +32,7 @@ apiClient.interceptors.response.use(
           );
           localStorage.setItem("access_token", res.data.access_token);
           localStorage.setItem("refresh_token", res.data.refresh_token);
+          error.config.baseURL = getApiBaseUrl();
           error.config.headers.Authorization = `Bearer ${res.data.access_token}`;
           return apiClient.request(error.config);
         } catch {

@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import DOMPurify from "dompurify";
-import { apiClient } from "@/lib/api";
+import { apiClient, tasksApi } from "@/lib/api";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
   AlertCircle, RotateCcw, ZoomIn, ZoomOut,
@@ -208,7 +208,7 @@ export default function TaskDetailPage() {
     if (!task || favoriting) return;
     setFavoriting(true);
     try {
-      await apiClient.post(`/tasks/${taskId}/favorite`, { is_favorite: !task.is_favorite });
+      await tasksApi.setFavorite(taskId, !task.is_favorite);
       await refetch();
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
