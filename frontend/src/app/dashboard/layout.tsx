@@ -47,25 +47,50 @@ export default function DashboardLayout({
   const t = useT();
 
   const [collapsed, setCollapsed] = useState(false);
+  const [recentFallbackTick, setRecentFallbackTick] = useState(0);
 
   // ── All hooks MUST be called before any conditional return ──
 
+  const enableRecentTasks = !!accessToken && !collapsed;
+
   // Fetch recent tasks for sidebar (enabled only when authenticated)
   const { data: recentData } = useQuery({
-    queryKey: ["recent-tasks"],
+    queryKey: ["recent-tasks", recentFallbackTick],
     queryFn: () =>
       tasksApi
         .list({ page: 1, page_size: 50 })
         .then((r: { data: { items: RecentTask[]; total: number } }) => r.data),
-    enabled: !!accessToken,
-    refetchInterval: 10000,
+    enabled: enableRecentTasks,
   });
 
   const recentTasks: RecentTask[] = recentData?.items ?? [];
 
+  useEffect(() => {
+    if (!enableRecentTasks) return;
+
+    const hasActiveTasks = recentTasks.some(
+      (task) => task.status === "pending" || task.status === "processing"
+    );
+    if (!hasActiveTasks) return;
+
+    const interval = window.setInterval(() => {
+      // Only use timed refetch as a fallback when at least one active task
+      // currently has no open WebSocket connection.
+      const hasDisconnectedActiveTask = recentTasks.some((task) => {
+        if (task.status !== "pending" && task.status !== "processing") return false;
+        return !wsRefs.current.has(task.id);
+      });
+      if (hasDisconnectedActiveTask) {
+        setRecentFallbackTick((tick) => tick + 1);
+      }
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [enableRecentTasks, recentTasks]);
+
   // WebSocket for active recent tasks (with exponential backoff reconnect)
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken || collapsed) return;
 
     const activeTasks = recentTasks.filter(
       (t) => t.status === "pending" || t.status === "processing"
