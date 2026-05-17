@@ -168,9 +168,6 @@ export default function AdminTasksPage() {
         <h1 className="text-lg font-semibold text-gray-900 whitespace-nowrap">
           {t("admin.taskHistory")}
         </h1>
-        <span className="text-xs text-gray-400 ml-auto">
-          {t("tasks.totalCount", { count: data?.total ?? 0 })}
-        </span>
       </div>
 
       {/* Filters */}
@@ -231,6 +228,9 @@ export default function AdminTasksPage() {
             <option value="failed">{t("status.failed")}</option>
             <option value="cancelled">{t("status.cancelled")}</option>
           </select>
+          <span className="text-xs text-gray-400 whitespace-nowrap">
+            {t("tasks.totalCount", { count: data?.total ?? 0 })}
+          </span>
         </div>
         {/* Row 2: Quick range buttons */}
         <div className="flex items-center gap-2">

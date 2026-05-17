@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 import { apiClient } from "@/lib/api";
 import { getWebSocketBaseUrl } from "@/lib/runtime-config";
+import { refetchTaskCollections, syncTaskCaches } from "@/lib/task-cache";
 import {
   CheckCircle2, XCircle, Clock, Loader2, FileText,
   FileSpreadsheet, FileImage, File,
@@ -237,8 +238,11 @@ function TaskRow({
     if (retrying) return;
     setRetrying(true);
     try {
-      await apiClient.post(`/tasks/${task.id}/retry`);
+      const res = await apiClient.post(`/tasks/${task.id}/retry`);
+      syncTaskCaches(queryClient, res.data as Task);
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+      refetchTaskCollections(queryClient);
     } catch {
       // silent
     } finally {
@@ -645,7 +649,7 @@ export function TaskList({
           )}
         </div>
 
-        <span className="text-xs text-gray-400 ml-auto">
+        <span className="text-xs text-gray-400 whitespace-nowrap">
           {t("tasks.totalCount", { count: data?.total ?? 0 })}
         </span>
       </div>

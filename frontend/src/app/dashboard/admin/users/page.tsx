@@ -49,9 +49,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <h1 className="text-xl font-semibold text-gray-900">{t("admin.userManagement")}</h1>
-        <span className="text-sm text-gray-500">{t("admin.total")}: {data?.total ?? 0}</span>
       </div>
 
       {/* Filters */}
@@ -77,6 +76,7 @@ export default function AdminUsersPage() {
             <option key={role} value={role}>{t(`role.${role}`)}</option>
           ))}
         </select>
+        <span className="text-xs text-gray-400 whitespace-nowrap">{t("admin.total")}: {data?.total ?? 0}</span>
       </div>
 
       {/* Table */}

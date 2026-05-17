@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import DOMPurify from "dompurify";
 import { apiClient, tasksApi } from "@/lib/api";
+import { refetchTaskCollections, syncTaskCaches } from "@/lib/task-cache";
 import {
   ArrowLeft, Download, FileText, Loader2, Copy, Check,
   AlertCircle, RotateCcw, ZoomIn, ZoomOut,
@@ -182,7 +183,9 @@ export default function TaskDetailPage() {
     if (retrying) return;
     setRetrying(true);
     try {
-      await apiClient.post(`/tasks/${taskId}/retry`);
+      const res = await apiClient.post(`/tasks/${taskId}/retry`);
+      syncTaskCaches(queryClient, res.data as TaskDetail);
+      refetchTaskCollections(queryClient);
       refetch();
     } catch (err: any) {
       alert(err?.response?.data?.detail || t("taskDetail.retryFailed"));
