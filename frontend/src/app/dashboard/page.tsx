@@ -7,11 +7,28 @@ import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { Suspense } from "react";
-import { UploadPanel } from "@/components/upload/upload-panel";
+import { CreatedTask, UploadPanel } from "@/components/upload/upload-panel";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 import { LanguageToggle } from "@/components/ui/language-toggle";
+
+interface TaskListCache {
+  items: CreatedTask[];
+  total: number;
+  page?: number;
+  page_size?: number;
+}
+
+function prependTask(cache: TaskListCache | undefined, task: CreatedTask): TaskListCache | undefined {
+  if (!cache) return cache;
+  const withoutDuplicate = cache.items.filter((item) => item.id !== task.id);
+  return {
+    ...cache,
+    items: [task, ...withoutDuplicate].slice(0, cache.page_size ?? cache.items.length + 1),
+    total: cache.items.some((item) => item.id === task.id) ? cache.total : cache.total + 1,
+  };
+}
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -25,9 +42,27 @@ function DashboardContent() {
     }
   }, [router, searchParams]);
 
-  const handleTaskCreated = () => {
-    queryClient.invalidateQueries({ queryKey: ["tasks"] });
-    queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+  const handleTaskCreated = (task: CreatedTask) => {
+    queryClient.setQueriesData<TaskListCache>(
+      { queryKey: ["recent-tasks"] },
+      (cache) => prependTask(cache, task)
+    );
+    queryClient.setQueriesData<TaskListCache>(
+      {
+        queryKey: ["tasks"],
+        predicate: ({ queryKey }) => {
+          const [, page, , statusFilter, searchQuery, favoriteOnly] = queryKey;
+          if (page !== 1 || favoriteOnly) return false;
+          if (statusFilter && statusFilter !== task.status) return false;
+          return !searchQuery || task.original_filename.toLowerCase().includes(String(searchQuery).toLowerCase());
+        },
+      },
+      (cache) => prependTask(cache, task)
+    );
+    void Promise.all([
+      queryClient.refetchQueries({ queryKey: ["recent-tasks"], type: "active" }),
+      queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+    ]);
     router.push("/dashboard/tasks");
   };
 

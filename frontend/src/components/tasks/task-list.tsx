@@ -37,6 +37,13 @@ interface Task {
   completed_at?: string;
 }
 
+interface TaskListCache {
+  items: Task[];
+  total: number;
+  page?: number;
+  page_size?: number;
+}
+
 const STATUS_CONFIG: Record<string, { labelKey: string; color: string; icon: React.ReactNode }> = {
   pending: { labelKey: "status.pending", color: "text-yellow-500", icon: <Clock className="h-4 w-4" /> },
   processing: { labelKey: "status.processing", color: "text-blue-500", icon: <Loader2 className="h-4 w-4 animate-spin" /> },
@@ -94,6 +101,71 @@ const BACKEND_LABELS: Record<string, string> = {
 
 function getBackendLabel(backend: string): string {
   return BACKEND_LABELS[backend] || backend;
+}
+
+function taskMatchesListFilters(task: Task, statusFilter: unknown, searchQuery: unknown): boolean {
+  if (statusFilter && statusFilter !== task.status) return false;
+  if (!searchQuery) return true;
+  return task.original_filename.toLowerCase().includes(String(searchQuery).toLowerCase());
+}
+
+function syncFavoriteInTaskCache(cache: TaskListCache | undefined, task: Task, queryKey: readonly unknown[]): TaskListCache | undefined {
+  if (!cache) return cache;
+
+  const [, page, , statusFilter, searchQuery, favoriteOnly] = queryKey;
+  const existingIndex = cache.items.findIndex((item) => item.id === task.id);
+
+  if (!favoriteOnly) {
+    if (existingIndex === -1) return cache;
+    return {
+      ...cache,
+      items: cache.items.map((item) => (item.id === task.id ? task : item)),
+    };
+  }
+
+  if (!task.is_favorite) {
+    if (existingIndex === -1) return cache;
+    return {
+      ...cache,
+      items: cache.items.filter((item) => item.id !== task.id),
+      total: Math.max(0, cache.total - 1),
+    };
+  }
+
+  if (existingIndex !== -1) {
+    return {
+      ...cache,
+      items: cache.items.map((item) => (item.id === task.id ? task : item)),
+    };
+  }
+
+  if (page !== 1 || !taskMatchesListFilters(task, statusFilter, searchQuery)) return cache;
+
+  return {
+    ...cache,
+    items: [task, ...cache.items].slice(0, cache.page_size ?? cache.items.length + 1),
+    total: cache.total + 1,
+  };
+}
+
+function updateFavoriteInCachedTaskLists(queryClient: ReturnType<typeof useQueryClient>, task: Task) {
+  const taskQueries = queryClient.getQueryCache().findAll({ queryKey: ["tasks"] });
+  for (const query of taskQueries) {
+    queryClient.setQueryData<TaskListCache>(query.queryKey, (cache) =>
+      syncFavoriteInTaskCache(cache, task, query.queryKey)
+    );
+  }
+
+  queryClient.setQueriesData<TaskListCache>({ queryKey: ["recent-tasks"] }, (cache) => {
+    if (!cache) return cache;
+    const hasTask = cache.items.some((item) => item.id === task.id);
+    return {
+      ...cache,
+      items: hasTask
+        ? cache.items.map((item) => (item.id === task.id ? task : item))
+        : cache.items,
+    };
+  });
 }
 
 /** Build page number array with ellipsis */
@@ -203,10 +275,12 @@ function TaskRow({
     if (favoriting) return;
     setFavoriting(true);
     try {
-      await tasksApi.setFavorite(task.id, !task.is_favorite);
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      const res = await tasksApi.setFavorite(task.id, !task.is_favorite);
+      const updatedTask = res.data as Task;
+      updateFavoriteInCachedTaskLists(queryClient, updatedTask);
       queryClient.invalidateQueries({ queryKey: ["task", task.id] });
       queryClient.invalidateQueries({ queryKey: ["recent-tasks"] });
+      void queryClient.refetchQueries({ queryKey: ["tasks"], type: "all" });
     } catch {
       alert(t("tasks.favoriteFailed"));
     } finally {
@@ -394,6 +468,7 @@ export function TaskList({
       );
       return hasActive ? 5000 : false;
     },
+    refetchOnMount: favoriteOnly ? "always" : undefined,
   });
 
   // Clear selection when page/filter changes

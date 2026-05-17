@@ -25,8 +25,20 @@ interface UploadedFile {
   error?: string;
 }
 
+export interface CreatedTask {
+  id: string;
+  original_filename: string;
+  file_size_bytes: number;
+  status: string;
+  progress: number;
+  is_favorite?: boolean;
+  backend: string;
+  output_format: string;
+  created_at: string;
+}
+
 interface UploadPanelProps {
-  onTaskCreated?: (taskId: string) => void;
+  onTaskCreated?: (task: CreatedTask) => void;
 }
 
 const ACCEPT_TYPES: Record<string, string[]> = {
@@ -125,7 +137,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
       });
 
       updateFile({ status: "done", progress: 100, taskId: taskRes.data.id });
-      onTaskCreated?.(taskRes.data.id);
+      onTaskCreated?.(taskRes.data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Upload failed";
       updateFile({ status: "error", error: msg });
