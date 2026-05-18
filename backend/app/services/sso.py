@@ -5,6 +5,7 @@ Supports: Local, OIDC, LDAP, WeChat Work, DingTalk.
 import httpx
 import structlog
 from typing import Optional
+from urllib.parse import urlencode
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from app.core.config import settings
@@ -71,13 +72,7 @@ class OAuth2Provider:
         return url
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict:
-        async with AsyncOAuth2Client(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=redirect_uri,
-            token_endpoint_auth_method=settings.OAUTH2_TOKEN_AUTH_METHOD,
-        ) as client:
-            token = await client.fetch_token(self.token_url, code=code, redirect_uri=redirect_uri)
+        token = await self._fetch_token(code, redirect_uri)
 
         access_token = token.get("access_token")
         if not access_token:
@@ -102,6 +97,36 @@ class OAuth2Provider:
                 "full_name": data.get(settings.OAUTH2_NAME_FIELD) or data.get("name") or email or str(subject),
                 "avatar_url": data.get(settings.OAUTH2_AVATAR_FIELD) or data.get("picture"),
             }
+
+    async def _fetch_token(self, code: str, redirect_uri: str) -> dict:
+        """Exchange authorization code without Authlib token_type validation.
+
+        Some corporate OAuth2 providers return non-standard token_type values
+        such as "access_token". Authlib rejects those while parsing the token
+        response, even though the access_token itself is usable.
+        """
+        form = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }
+        auth = None
+        if settings.OAUTH2_TOKEN_AUTH_METHOD == "client_secret_basic":
+            auth = (self.client_id, self.client_secret)
+        else:
+            form["client_id"] = self.client_id
+            form["client_secret"] = self.client_secret
+
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                self.token_url,
+                content=urlencode(form),
+                headers=headers,
+                auth=auth,
+            )
+            response.raise_for_status()
+            return response.json()
 
 
 class LDAPAuthService:
