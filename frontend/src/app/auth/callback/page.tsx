@@ -24,7 +24,8 @@ function CallbackContent() {
   useEffect(() => {
     const code = searchParams.get("code");
     const state = searchParams.get("state");
-    const provider = searchParams.get("provider") || state?.split(":")[0];
+    const stateProvider = state?.includes(":") ? state.split(":", 1)[0] : "";
+    const provider = searchParams.get("provider") || stateProvider || "oauth2";
 
     if (!code || !state) {
       setStatus("error");
@@ -34,8 +35,7 @@ function CallbackContent() {
 
     (async () => {
       try {
-        const providerName = provider || "oidc";
-        const res = await authApi.ssoCallback(providerName, code, state);
+        const res = await authApi.ssoCallback(provider, code, state);
         setTokens(res.data.access_token, res.data.refresh_token);
         await fetchMe();
         setStatus("success");
