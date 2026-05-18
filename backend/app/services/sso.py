@@ -77,11 +77,22 @@ class OAuth2Provider:
             redirect_uri=redirect_uri,
             token_endpoint_auth_method=settings.OAUTH2_TOKEN_AUTH_METHOD,
         ) as client:
-            token = await client.fetch_token(self.token_url, code=code)
+            token = await client.fetch_token(self.token_url, code=code, redirect_uri=redirect_uri)
+
+        access_token = token.get("access_token")
+        if not access_token:
+            logger.warning("OAuth2 token response missing access_token")
+            return {}
+
+        # Some corporate IdPs return non-standard token_type values such as
+        # "access_token". Use a plain HTTP client for userinfo so Authlib does
+        # not reject the already-issued access token while attaching auth.
+        async with httpx.AsyncClient() as client:
             userinfo = await client.get(
                 self.userinfo_url,
-                headers={"Authorization": f"Bearer {token.get('access_token')}"},
+                headers={"Authorization": f"Bearer {access_token}"},
             )
+            userinfo.raise_for_status()
             data = userinfo.json()
             subject = data.get(settings.OAUTH2_USER_ID_FIELD) or data.get("sub") or data.get("id")
             email = data.get(settings.OAUTH2_EMAIL_FIELD) or data.get("email") or ""
