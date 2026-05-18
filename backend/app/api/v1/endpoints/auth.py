@@ -152,7 +152,7 @@ async def sso_authorize(provider: str):
     if not _provider_enabled(provider):
         raise HTTPException(status_code=400, detail=f"SSO provider '{provider}' not enabled")
 
-    state = secrets.token_urlsafe(16)
+    state = f"{provider}:{secrets.token_urlsafe(16)}"
     _store_sso_state(state, provider)
     redirect_uri = _frontend_callback_uri(provider)
 

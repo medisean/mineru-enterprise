@@ -42,13 +42,24 @@ class OIDCProvider:
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict:
         meta = await self.get_metadata()
-        async with AsyncOAuth2Client(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=redirect_uri,
-        ) as client:
-            token = await client.fetch_token(meta["token_endpoint"], code=code)
-            userinfo = await client.get(meta["userinfo_endpoint"])
+        token = await _fetch_authorization_code_token(
+            meta["token_endpoint"],
+            self.client_id,
+            self.client_secret,
+            code,
+            redirect_uri,
+            _oidc_token_auth_method(meta),
+        )
+        access_token = token.get("access_token")
+        if not access_token:
+            logger.warning("OIDC token response missing access_token")
+            return {}
+        async with httpx.AsyncClient() as client:
+            userinfo = await client.get(
+                meta["userinfo_endpoint"],
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            userinfo.raise_for_status()
             return userinfo.json()
 
 
@@ -105,28 +116,54 @@ class OAuth2Provider:
         such as "access_token". Authlib rejects those while parsing the token
         response, even though the access_token itself is usable.
         """
-        form = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": redirect_uri,
-        }
-        auth = None
-        if settings.OAUTH2_TOKEN_AUTH_METHOD == "client_secret_basic":
-            auth = (self.client_id, self.client_secret)
-        else:
-            form["client_id"] = self.client_id
-            form["client_secret"] = self.client_secret
+        return await _fetch_authorization_code_token(
+            self.token_url,
+            self.client_id,
+            self.client_secret,
+            code,
+            redirect_uri,
+            settings.OAUTH2_TOKEN_AUTH_METHOD,
+        )
 
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                self.token_url,
-                content=urlencode(form),
-                headers=headers,
-                auth=auth,
-            )
-            response.raise_for_status()
-            return response.json()
+
+def _oidc_token_auth_method(metadata: dict) -> str:
+    supported = metadata.get("token_endpoint_auth_methods_supported") or []
+    if "client_secret_post" in supported:
+        return "client_secret_post"
+    return "client_secret_basic"
+
+
+async def _fetch_authorization_code_token(
+    token_url: str,
+    client_id: str,
+    client_secret: str,
+    code: str,
+    redirect_uri: str,
+    token_auth_method: str,
+) -> dict:
+    """Exchange authorization code without Authlib token_type validation."""
+    form = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+    }
+    auth = None
+    if token_auth_method == "client_secret_basic":
+        auth = (client_id, client_secret)
+    else:
+        form["client_id"] = client_id
+        form["client_secret"] = client_secret
+
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            token_url,
+            content=urlencode(form),
+            headers=headers,
+            auth=auth,
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 class LDAPAuthService:
