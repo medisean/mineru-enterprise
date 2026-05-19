@@ -3,6 +3,7 @@ Auth endpoints: local login, SSO redirect/callback, token refresh.
 """
 import secrets
 import json
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
@@ -18,6 +19,7 @@ from app.schemas.schemas import LoginRequest, TokenResponse, RefreshRequest, Use
 from app.services.sso import oidc_provider, oauth2_provider, wechat_work_oauth, dingtalk_oauth, ldap_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = structlog.get_logger(__name__)
 
 # SSO state TTL in seconds (10 minutes)
 _SSO_STATE_TTL = 600
@@ -197,6 +199,7 @@ async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=400, detail="Invalid provider")
 
     if not user_info:
+        logger.warning("SSO provider returned no user info", provider=payload.provider)
         raise HTTPException(status_code=401, detail="SSO authentication failed")
 
     user = await _get_or_create_sso_user(db, user_info, sso_provider)

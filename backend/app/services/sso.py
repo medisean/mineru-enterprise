@@ -5,6 +5,8 @@ Supports: Local, OIDC, LDAP, WeChat Work, DingTalk.
 import httpx
 import structlog
 from typing import Optional
+import base64
+import json
 from urllib.parse import urlencode
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
@@ -50,9 +52,12 @@ class OIDCProvider:
             redirect_uri,
             _oidc_token_auth_method(meta),
         )
-        access_token = token.get("access_token")
+        access_token = _extract_access_token(token)
         if not access_token:
-            logger.warning("OIDC token response missing access_token")
+            user_info = _userinfo_from_token_response(token)
+            if user_info:
+                return user_info
+            logger.warning("OIDC token response missing access_token", token_keys=_safe_dict_keys(token))
             return {}
         async with httpx.AsyncClient() as client:
             userinfo = await client.get(
@@ -85,9 +90,12 @@ class OAuth2Provider:
     async def exchange_code(self, code: str, redirect_uri: str) -> dict:
         token = await self._fetch_token(code, redirect_uri)
 
-        access_token = token.get("access_token")
+        access_token = _extract_access_token(token)
         if not access_token:
-            logger.warning("OAuth2 token response missing access_token")
+            user_info = _userinfo_from_token_response(token)
+            if user_info:
+                return self._normalize_user_info(user_info)
+            logger.warning("OAuth2 token response missing access_token", token_keys=_safe_dict_keys(token))
             return {}
 
         # Some corporate IdPs return non-standard token_type values such as
@@ -99,15 +107,42 @@ class OAuth2Provider:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             userinfo.raise_for_status()
-            data = userinfo.json()
-            subject = data.get(settings.OAUTH2_USER_ID_FIELD) or data.get("sub") or data.get("id")
-            email = data.get(settings.OAUTH2_EMAIL_FIELD) or data.get("email") or ""
-            return {
-                "sso_subject": subject,
-                "email": email or f"{subject}@oauth2.local",
-                "full_name": data.get(settings.OAUTH2_NAME_FIELD) or data.get("name") or email or str(subject),
-                "avatar_url": data.get(settings.OAUTH2_AVATAR_FIELD) or data.get("picture"),
-            }
+            return self._normalize_user_info(userinfo.json())
+
+    def _normalize_user_info(self, raw: dict) -> dict:
+        data = _unwrap_payload(raw)
+        subject = (
+            data.get(settings.OAUTH2_USER_ID_FIELD)
+            or data.get("sub")
+            or data.get("id")
+            or data.get("user_id")
+            or data.get("userid")
+            or data.get("userId")
+            or data.get("uid")
+            or data.get("unionId")
+            or data.get("unionid")
+            or data.get("account")
+            or data.get("username")
+        )
+        email = data.get(settings.OAUTH2_EMAIL_FIELD) or data.get("email") or ""
+        name = (
+            data.get(settings.OAUTH2_NAME_FIELD)
+            or data.get("name")
+            or data.get("displayName")
+            or data.get("nick")
+            or data.get("nickname")
+            or email
+            or str(subject or "")
+        )
+        if not subject:
+            logger.warning("OAuth2 userinfo missing subject", userinfo_keys=_safe_dict_keys(data))
+            return {}
+        return {
+            "sso_subject": str(subject),
+            "email": email or f"{subject}@oauth2.local",
+            "full_name": name,
+            "avatar_url": data.get(settings.OAUTH2_AVATAR_FIELD) or data.get("picture") or data.get("avatar_url") or data.get("avatarUrl"),
+        }
 
     async def _fetch_token(self, code: str, redirect_uri: str) -> dict:
         """Exchange authorization code without Authlib token_type validation.
@@ -164,6 +199,54 @@ async def _fetch_authorization_code_token(
         )
         response.raise_for_status()
         return response.json()
+
+
+def _safe_dict_keys(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    return sorted(str(key) for key in value.keys())
+
+
+def _unwrap_payload(value: dict) -> dict:
+    data = value
+    for key in ("data", "result", "user", "userinfo", "profile"):
+        nested = data.get(key)
+        if isinstance(nested, dict):
+            data = nested
+    return data
+
+
+def _extract_access_token(token: dict) -> str:
+    for data in (token, _unwrap_payload(token)):
+        for key in ("access_token", "accessToken", "access-token", "token"):
+            value = data.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return ""
+
+
+def _userinfo_from_token_response(token: dict) -> dict:
+    unwrapped = _unwrap_payload(token)
+    for key in ("id_token", "idToken"):
+        value = token.get(key) or unwrapped.get(key)
+        if isinstance(value, str) and value:
+            return _decode_jwt_payload(value)
+    user_info_keys = {"sub", "id", "user_id", "userid", "userId", "uid", "unionId", "unionid", "account", "username", "email"}
+    if any(key in unwrapped for key in user_info_keys):
+        return unwrapped
+    return {}
+
+
+def _decode_jwt_payload(token: str) -> dict:
+    parts = token.split(".")
+    if len(parts) < 2:
+        return {}
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload.encode("ascii")))
+    except Exception as exc:
+        logger.warning("Failed to decode id_token payload", error=str(exc))
+        return {}
 
 
 class LDAPAuthService:
