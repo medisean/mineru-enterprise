@@ -10,7 +10,8 @@ import { useAuthStore } from "@/lib/auth-store";
 import { authApi } from "@/lib/api";
 import { startSSOLogin } from "@/lib/sso";
 import { getRuntimeEnv, isRuntimeEnabled } from "@/lib/runtime-config";
-import { Loader2, FileText } from "lucide-react";
+import { AppLogo } from "@/components/brand/app-logo";
+import { Loader2 } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
 const SSO_PROVIDERS = [
@@ -132,8 +133,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <Link href="/" className="text-center mb-8 block">
-          <div className="mx-auto w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mb-4">
-            <FileText className="h-6 w-6 text-white" />
+          <div className="mx-auto w-12 h-12 flex items-center justify-center mb-4">
+            <AppLogo className="h-10 w-10" />
           </div>
           <h1 className="text-2xl font-semibold text-gray-900">MinerU</h1>
         </Link>

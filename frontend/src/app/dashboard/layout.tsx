@@ -10,9 +10,10 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi, tasksApi } from "@/lib/api";
 import { getRuntimeEnv, getWebSocketBaseUrl } from "@/lib/runtime-config";
+import { AppLogo } from "@/components/brand/app-logo";
 import {
   LogOut, FileText, Plus, Loader2, PanelLeftClose, PanelLeftOpen,
-  CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
+  CheckCircle2, XCircle, Clock, AlertCircle,
   Shield, Users, Clock4, Star,
 } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
@@ -210,7 +211,7 @@ export default function DashboardLayout({
           {!collapsed && (
             <>
               <Link href="/dashboard" className="flex items-center gap-2 flex-1 min-w-0 group">
-                <LayoutDashboard className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                <AppLogo className="h-5 w-5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <h1 className="text-base font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">MinerU</h1>
                 </div>
@@ -227,7 +228,7 @@ export default function DashboardLayout({
           {collapsed && (
             <div className="w-full flex flex-col items-center gap-1">
               <Link href="/dashboard" className="p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="MinerU">
-                <LayoutDashboard className="h-4 w-4" />
+                <AppLogo className="h-4 w-4" />
               </Link>
               <button
                 onClick={() => setCollapsed((c) => !c)}
