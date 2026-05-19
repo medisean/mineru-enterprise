@@ -61,6 +61,10 @@ def _frontend_callback_uri(provider: str) -> str:
     return f"{settings.FRONTEND_URL}/auth/callback"
 
 
+def _state_prefix(state: str) -> str:
+    return state.split(":", 1)[0] if ":" in state else ""
+
+
 def _provider_enabled(provider: str) -> bool:
     return (
         (provider == "oidc" and settings.OIDC_ENABLED and oidc_provider)
@@ -157,6 +161,12 @@ async def sso_authorize(provider: str):
     state = f"{provider}:{secrets.token_urlsafe(16)}"
     _store_sso_state(state, provider)
     redirect_uri = _frontend_callback_uri(provider)
+    logger.info(
+        "SSO authorization started",
+        provider=provider,
+        redirect_uri=redirect_uri,
+        state_prefix=_state_prefix(state),
+    )
 
     if provider == "oidc" and settings.OIDC_ENABLED and oidc_provider:
         url = await oidc_provider.get_authorization_url(redirect_uri, state)
@@ -169,19 +179,34 @@ async def sso_authorize(provider: str):
     else:
         raise HTTPException(status_code=400, detail=f"SSO provider '{provider}' not enabled")
 
+    logger.info("SSO authorization URL returned", provider=provider, state_prefix=_state_prefix(state))
     return {"authorization_url": url, "state": state}
 
 
 @router.post("/sso/callback", response_model=TokenResponse)
 async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(get_db)):
+    logger.info(
+        "SSO callback received",
+        provider=payload.provider,
+        state_prefix=_state_prefix(payload.state),
+        code_present=bool(payload.code),
+    )
     # Validate state to prevent CSRF
     stored_provider = _consume_sso_state(payload.state)
     if stored_provider is None:
+        logger.warning("SSO callback state invalid or expired", provider=payload.provider, state_prefix=_state_prefix(payload.state))
         raise HTTPException(status_code=400, detail="Invalid or expired SSO state. Please retry the login flow.")
     if stored_provider != payload.provider:
+        logger.warning(
+            "SSO callback provider mismatch",
+            payload_provider=payload.provider,
+            stored_provider=stored_provider,
+            state_prefix=_state_prefix(payload.state),
+        )
         raise HTTPException(status_code=400, detail="SSO provider mismatch. Possible CSRF attack.")
 
     redirect_uri = _frontend_callback_uri(payload.provider)
+    logger.info("SSO callback state validated", provider=payload.provider, redirect_uri=redirect_uri)
 
     if payload.provider == "oidc" and oidc_provider:
         user_info = await oidc_provider.exchange_code(payload.code, redirect_uri)
@@ -203,6 +228,7 @@ async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=401, detail="SSO authentication failed")
 
     user = await _get_or_create_sso_user(db, user_info, sso_provider)
+    logger.info("SSO callback completed", provider=payload.provider, user_id=user.id)
     return _make_tokens(user)
 
 

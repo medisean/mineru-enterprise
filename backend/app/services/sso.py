@@ -88,21 +88,49 @@ class OAuth2Provider:
         self.client_secret = settings.OAUTH2_CLIENT_SECRET
 
     def get_authorization_url(self, redirect_uri: str, state: str) -> str:
+        logger.info(
+            "OAuth2 authorization URL requested",
+            authorization_url=self.authorization_url,
+            redirect_uri=redirect_uri,
+            scope=settings.OAUTH2_SCOPE,
+            state_prefix=_state_prefix(state),
+        )
         client = AsyncOAuth2Client(
             client_id=self.client_id,
             redirect_uri=redirect_uri,
             scope=settings.OAUTH2_SCOPE,
         )
         url, _ = client.create_authorization_url(self.authorization_url, state=state)
+        logger.info("OAuth2 authorization URL generated", state_prefix=_state_prefix(state))
         return url
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict:
+        logger.info(
+            "OAuth2 code exchange started",
+            token_url=self.token_url,
+            userinfo_url=self.userinfo_url,
+            redirect_uri=redirect_uri,
+            token_auth_method=settings.OAUTH2_TOKEN_AUTH_METHOD,
+            code_present=bool(code),
+        )
         token = await self._fetch_token(code, redirect_uri)
 
         access_token = _extract_access_token(token)
+        logger.info(
+            "OAuth2 token response parsed",
+            token_keys=_safe_dict_keys(token),
+            token_error=_token_error_summary(token),
+            access_token_present=bool(access_token),
+            token_type=_extract_token_type(token) or "",
+            id_token_present=_has_id_token(token),
+        )
         if not access_token:
             user_info = _userinfo_from_token_response(token)
             if user_info:
+                logger.info(
+                    "OAuth2 user info extracted from token response",
+                    userinfo_keys=_safe_dict_keys(_unwrap_payload(user_info)),
+                )
                 return self._normalize_user_info(user_info)
             logger.warning(
                 "OAuth2 token response missing access_token",
@@ -112,6 +140,11 @@ class OAuth2Provider:
             return {}
 
         userinfo = await _fetch_userinfo(self.userinfo_url, access_token, token)
+        logger.info(
+            "OAuth2 userinfo response parsed",
+            userinfo_keys=_safe_dict_keys(_unwrap_payload(userinfo)),
+            userinfo_error=_token_error_summary(_unwrap_payload(userinfo)),
+        )
         return self._normalize_user_info(userinfo)
 
     def _normalize_user_info(self, raw: dict) -> dict:
@@ -146,6 +179,13 @@ class OAuth2Provider:
                 userinfo_error=_token_error_summary(data),
             )
             return {}
+        logger.info(
+            "OAuth2 userinfo normalized",
+            subject_present=True,
+            email_present=bool(email),
+            name_present=bool(name),
+            avatar_present=bool(data.get(settings.OAUTH2_AVATAR_FIELD) or data.get("picture") or data.get("avatar_url") or data.get("avatarUrl")),
+        )
         return {
             "sso_subject": str(subject),
             "email": email or f"{subject}@oauth2.local",
@@ -199,6 +239,15 @@ async def _fetch_authorization_code_token(
         form["client_secret"] = client_secret
 
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    logger.info(
+        "SSO token request sending",
+        token_url=token_url,
+        redirect_uri=redirect_uri,
+        token_auth_method=token_auth_method,
+        form_keys=sorted(key for key in form.keys() if key not in {"code", "client_secret"}),
+        code_present=bool(code),
+        client_secret_present=bool(client_secret),
+    )
     async with httpx.AsyncClient() as client:
         response = await client.post(
             token_url,
@@ -206,8 +255,18 @@ async def _fetch_authorization_code_token(
             headers=headers,
             auth=auth,
         )
+        logger.info("SSO token response received", token_url=token_url, status_code=response.status_code)
         response.raise_for_status()
         token = response.json()
+        logger.info(
+            "SSO token response decoded",
+            token_url=token_url,
+            token_keys=_safe_dict_keys(token),
+            token_error=_token_error_summary(token),
+            access_token_present=bool(_extract_access_token(token)),
+            token_type=_extract_token_type(token) or "",
+            id_token_present=_has_id_token(token),
+        )
         if _token_error_summary(token):
             logger.warning(
                 "SSO token endpoint returned error payload",
@@ -231,10 +290,29 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
     ])
 
     last_payload: dict = {}
+    logger.info(
+        "SSO userinfo request sequence started",
+        userinfo_url=userinfo_url,
+        token_type=token_type or "",
+        attempt_methods=[attempt[0] for attempt in attempts],
+    )
     async with httpx.AsyncClient() as client:
         for auth_method, headers, params in attempts:
+            logger.info(
+                "SSO userinfo request sending",
+                userinfo_url=userinfo_url,
+                userinfo_auth_method=auth_method,
+                header_keys=sorted(headers.keys()),
+                param_keys=sorted(params.keys()),
+            )
             try:
                 response = await client.get(userinfo_url, headers=headers, params=params)
+                logger.info(
+                    "SSO userinfo response received",
+                    userinfo_url=userinfo_url,
+                    userinfo_auth_method=auth_method,
+                    status_code=response.status_code,
+                )
                 response.raise_for_status()
                 payload = response.json()
             except Exception as exc:
@@ -244,8 +322,12 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
             last_payload = payload
             error_summary = _token_error_summary(payload)
             if not error_summary:
-                if auth_method != "bearer_authorization":
-                    logger.info("SSO userinfo request succeeded with fallback auth", userinfo_auth_method=auth_method)
+                logger.info(
+                    "SSO userinfo request succeeded",
+                    userinfo_auth_method=auth_method,
+                    userinfo_keys=_safe_dict_keys(_unwrap_payload(payload)),
+                    used_fallback=auth_method != "bearer_authorization",
+                )
                 return payload
             logger.warning(
                 "SSO userinfo endpoint returned error payload",
@@ -274,6 +356,10 @@ def _token_error_summary(value: object) -> dict:
     return summary
 
 
+def _state_prefix(state: str) -> str:
+    return state.split(":", 1)[0] if ":" in state else ""
+
+
 def _unwrap_payload(value: dict) -> dict:
     data = value
     for key in ("data", "result", "user", "userinfo", "profile"):
@@ -299,6 +385,11 @@ def _extract_token_type(token: dict) -> str:
             if isinstance(value, str) and value:
                 return value
     return ""
+
+
+def _has_id_token(token: dict) -> bool:
+    unwrapped = _unwrap_payload(token)
+    return bool(token.get("id_token") or token.get("idToken") or unwrapped.get("id_token") or unwrapped.get("idToken"))
 
 
 def _userinfo_from_token_response(token: dict) -> dict:
