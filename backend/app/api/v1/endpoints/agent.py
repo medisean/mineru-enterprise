@@ -17,7 +17,8 @@ import structlog
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -98,6 +99,8 @@ def _trace_id() -> str:
 
 def _map_agent_status(status: TaskStatus, progress: int = 0) -> str:
     """Map internal TaskStatus to Agent API state string."""
+    if status == TaskStatus.PROCESSING and progress < 20:
+        return "uploading"
     mapping = {
         TaskStatus.PENDING: "pending",
         TaskStatus.PROCESSING: "running" if progress > 0 else "pending",
@@ -203,7 +206,10 @@ async def agent_parse_url(
     """Lightweight parse — submit URL, no auth required, IP rate-limited."""
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(client_ip):
-        return {"code": -30004, "msg": "Rate limit exceeded, please slow down", "trace_id": _trace_id(), "data": None}
+        return JSONResponse(
+            status_code=429,
+            content={"code": -30004, "msg": "Rate limit exceeded, please slow down", "trace_id": _trace_id(), "data": None},
+        )
 
     user_id = await _get_or_create_system_user(db)
 
@@ -268,7 +274,10 @@ async def agent_parse_file(
     """Lightweight parse — get presigned upload URL, no auth required."""
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(client_ip):
-        return {"code": -30004, "msg": "Rate limit exceeded, please slow down", "trace_id": _trace_id(), "data": None}
+        return JSONResponse(
+            status_code=429,
+            content={"code": -30004, "msg": "Rate limit exceeded, please slow down", "trace_id": _trace_id(), "data": None},
+        )
 
     ext = payload.file_name.rsplit(".", 1)[-1].lower() if "." in payload.file_name else ""
     if ext not in settings.ALLOWED_EXTENSIONS:
@@ -277,7 +286,7 @@ async def agent_parse_file(
     user_id = await _get_or_create_system_user(db)
 
     s3_key = f"uploads/{user_id}/{uuid.uuid4()}/{payload.file_name}"
-    file_url = storage_service.generate_upload_presigned_url(s3_key, "application/octet-stream")
+    file_url = storage_service.generate_upload_presigned_url(s3_key, None)
 
     # Create task in DB
     task = ParseTask(
@@ -335,13 +344,18 @@ async def agent_parse_result(
     """Get lightweight parse result — no auth required."""
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(client_ip):
-        return {"code": -30004, "msg": "Rate limit exceeded", "trace_id": _trace_id(), "data": None}
+        return JSONResponse(
+            status_code=429,
+            content={"code": -30004, "msg": "Rate limit exceeded", "trace_id": _trace_id(), "data": None},
+        )
 
     task = await db.get(ParseTask, task_id)
     if not task:
         return {"code": -60012, "msg": "Task not found", "trace_id": _trace_id(), "data": None}
 
     state = _map_agent_status(task.status, task.progress)
+    if task.file_size_bytes == 0 and not storage_service.object_exists(task.input_s3_key):
+        state = "waiting-file"
     markdown_url = None
     err_code = None
 

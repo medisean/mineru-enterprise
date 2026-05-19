@@ -221,7 +221,7 @@ class ExtractTaskRequest(BaseModel):
     """POST /api/v4/extract/task — create parse task by file URL"""
     url: str
     model_version: Optional[str] = ""       # pipeline | hybrid-auto-engine | vlm-auto-engine | empty=default
-    is_ocr: Optional[bool] = None
+    is_ocr: Optional[bool] = False
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True
     language: Optional[str] = "ch"
@@ -259,7 +259,7 @@ class ExtractTaskResultData(BaseModel):
 class BatchFileItem(BaseModel):
     """Single file entry in batch upload request"""
     name: str
-    is_ocr: Optional[bool] = None
+    is_ocr: Optional[bool] = False
     data_id: Optional[str] = None
     page_ranges: Optional[str] = None
 
@@ -286,7 +286,7 @@ class BatchFileUrlsData(BaseModel):
 class BatchUrlFileItem(BaseModel):
     """Single URL file entry in batch extract request"""
     url: str
-    is_ocr: Optional[bool] = None
+    is_ocr: Optional[bool] = False
     data_id: Optional[str] = None
     page_ranges: Optional[str] = None
 
@@ -333,7 +333,7 @@ class AgentUrlParseRequest(BaseModel):
     file_name: Optional[str] = None
     language: Optional[str] = "ch"
     enable_table: Optional[bool] = True
-    is_ocr: Optional[bool] = None
+    is_ocr: Optional[bool] = False
     enable_formula: Optional[bool] = True
     page_range: Optional[str] = None                  # Agent uses "page_range" (singular)
 
@@ -343,7 +343,7 @@ class AgentFileParseRequest(BaseModel):
     file_name: str
     language: Optional[str] = "ch"
     enable_table: Optional[bool] = True
-    is_ocr: Optional[bool] = None
+    is_ocr: Optional[bool] = False
     enable_formula: Optional[bool] = True
     page_range: Optional[str] = None
 

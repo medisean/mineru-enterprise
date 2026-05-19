@@ -3,25 +3,16 @@ Celery worker — Webhook callback delivery tasks.
 
 When a parse task completes (success/failed), the parse worker dispatches
 a `deliver_webhook` task to the `webhook` queue. This task sends an HTTP POST
-to the task's `callback_url` with an HMAC-SHA256 signature.
+to the task's `callback_url` using MinerU's official checksum/content body.
 
 Payload format (matches MinerU official API):
 {
-    "task_id": "...",
-    "data_id": "...",          # optional user-defined ID
-    "status": "success|failed",
-    "progress": 100,
-    "error_message": null,
-    "output_s3_prefix": "...", # S3 prefix for results
-    "created_at": "...",
-    "completed_at": "..."
+    "checksum": "sha256(user_id + seed + content)",
+    "content": "{\"task_id\":\"...\",\"state\":\"done\",...}"
 }
-
-Signature header: X-MinerU-Signature = HMAC-SHA256(payload_json, seed)
 """
 import json
 import hashlib
-import hmac
 import structlog
 from datetime import datetime, timezone
 
@@ -36,9 +27,40 @@ logger = structlog.get_logger(__name__)
 from app.workers.parse_worker import celery_app
 
 
-def _sign_payload(payload_json: str, seed: str) -> str:
-    """Compute HMAC-SHA256 signature for the payload using the seed."""
-    return hmac.new(seed.encode(), payload_json.encode(), hashlib.sha256).hexdigest()
+def _official_state(status: str) -> str:
+    if status == "success":
+        return "done"
+    if status == "failed":
+        return "failed"
+    return status
+
+
+def _build_official_content(task_id: str, payload: dict) -> str:
+    data = {
+        "task_id": task_id,
+        "state": _official_state(str(payload.get("status") or "")),
+        "err_msg": payload.get("error_message") or "",
+    }
+    if payload.get("data_id"):
+        data["data_id"] = payload["data_id"]
+
+    output_prefix = payload.get("output_s3_prefix")
+    if data["state"] == "done" and output_prefix:
+        try:
+            from app.services.official_result_exports import ensure_full_result_zip
+            from app.services.storage import storage_service
+            zip_key = ensure_full_result_zip(storage_service, output_prefix)
+            if zip_key:
+                data["full_zip_url"] = storage_service.generate_download_presigned_url(zip_key)
+        except Exception as exc:
+            logger.warning("Failed to attach callback full_zip_url", task_id=task_id, error=str(exc))
+
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def _checksum(user_id: str, seed: str, content: str) -> str:
+    """Compute official MinerU callback checksum."""
+    return hashlib.sha256(f"{user_id}{seed}{content}".encode("utf-8")).hexdigest()
 
 
 @celery_app.task(
@@ -54,18 +76,18 @@ def deliver_webhook(self, task_id: str, callback_url: str, callback_seed: str, p
         logger.info("Webhook disabled, skipping", task_id=task_id)
         return
 
-    payload_json = json.dumps(payload, ensure_ascii=False, default=str)
-
-    # Determine signing key: per-task seed > global WEBHOOK_SECRET
+    content = _build_official_content(task_id, payload)
     seed = callback_seed or settings.WEBHOOK_SECRET or ""
-    signature = _sign_payload(payload_json, seed) if seed else ""
+    body = {
+        "checksum": _checksum(str(payload.get("user_id") or ""), seed, content),
+        "content": content,
+    }
+    payload_json = json.dumps(body, ensure_ascii=False, default=str)
 
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "MinerU-Webhook/1.0",
     }
-    if signature:
-        headers["X-MinerU-Signature"] = signature
 
     try:
         with httpx.Client(timeout=settings.WEBHOOK_TIMEOUT_SECONDS) as client:

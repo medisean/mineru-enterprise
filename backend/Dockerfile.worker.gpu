@@ -27,6 +27,7 @@ RUN mirror="${UBUNTU_APT_MIRROR:-$APT_MIRROR}"; \
     poppler-utils \
     curl wget \
     libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui \
+    libreoffice-java-common default-jre-headless \
     fonts-noto-cjk \
     python3.11 python3.11-venv python3.11-dev python3-pip \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \

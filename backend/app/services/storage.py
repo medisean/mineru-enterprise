@@ -38,16 +38,18 @@ class StorageService:
 
         self.bucket = settings.S3_BUCKET_NAME
 
-    def generate_upload_presigned_url(self, key: str, content_type: str, expires: int = None) -> str:
+    def generate_upload_presigned_url(self, key: str, content_type: str | None = None, expires: int = None) -> str:
         """Generate a presigned URL for direct browser upload."""
+        params = {
+            "Bucket": self.bucket,
+            "Key": key,
+        }
+        if content_type:
+            params["ContentType"] = content_type
         try:
             return self.external_client.generate_presigned_url(
                 "put_object",
-                Params={
-                    "Bucket": self.bucket,
-                    "Key": key,
-                    "ContentType": content_type,
-                },
+                Params=params,
                 ExpiresIn=expires or settings.S3_PRESIGN_EXPIRE_SECONDS,
             )
         except ClientError as e:
@@ -95,6 +97,14 @@ class StorageService:
         except ClientError as e:
             logger.warning("Failed to read head bytes from S3", key=key, error=str(e))
             return b""
+
+    def object_exists(self, key: str) -> bool:
+        """Return whether an object exists in the bucket."""
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError:
+            return False
 
     def delete_object(self, key: str) -> None:
         try:

@@ -360,6 +360,38 @@ async def get_task(
 
 # ── Get source file presigned URL (for inline preview) ─────────────────────
 OFFICE_EXTENSIONS = {"pptx", "docx", "xlsx"}
+SOURCE_PREVIEW_PDF_NAME = "source_preview.pdf"
+
+
+def _is_source_preview_key(key: str) -> bool:
+    return key.endswith(f"/_preview/{SOURCE_PREVIEW_PDF_NAME}")
+
+
+def _is_pdf_result_key(key: str) -> bool:
+    lowered = key.lower()
+    return lowered.endswith(".pdf") and f"/{ZIP_EXPORT_DIR}/" not in lowered
+
+
+def _find_office_preview_key(task: ParseTask) -> Optional[str]:
+    if not task.output_s3_prefix:
+        return None
+
+    preview_key = f"{task.output_s3_prefix.rstrip('/')}/_preview/{SOURCE_PREVIEW_PDF_NAME}"
+    if storage_service.object_exists(preview_key):
+        return preview_key
+
+    # Compatibility fallback for older tasks or MinerU output layouts that
+    # already contain a converted PDF somewhere in the result prefix.
+    objects = storage_service.list_objects(task.output_s3_prefix)
+    for obj in objects:
+        key = obj["key"]
+        if _is_source_preview_key(key):
+            return key
+    for obj in objects:
+        key = obj["key"]
+        if _is_pdf_result_key(key):
+            return key
+    return None
 
 
 @router.get("/{task_id}/source-url")
@@ -377,23 +409,16 @@ async def get_source_url(
     ext = task.original_filename.rsplit(".", 1)[-1].lower() if "." in task.original_filename else ""
     is_office = ext in OFFICE_EXTENSIONS
 
-    # For Office files, try to find the converted PDF preview first
-    if is_office and task.output_s3_prefix:
-        preview_key = f"{task.output_s3_prefix}/_preview/source_preview.pdf"
-        try:
-            # Check if the PDF preview exists in S3
-            objects = storage_service.list_objects(f"{task.output_s3_prefix}/_preview/")
-            for obj in objects:
-                if obj["key"] == preview_key:
-                    filename = _download_filename(task, "pdf")
-                    url = storage_service.generate_download_presigned_url(
-                        preview_key,
-                        filename=filename,
-                        inline_disposition=True,
-                    )
-                    return {"download_url": url, "preview_type": "pdf"}
-        except Exception:
-            pass
+    if is_office:
+        preview_key = _find_office_preview_key(task)
+        if preview_key:
+            filename = _download_filename(task, "pdf")
+            url = storage_service.generate_download_presigned_url(
+                preview_key,
+                filename=filename,
+                inline_disposition=True,
+            )
+            return {"download_url": url, "preview_type": "pdf"}
 
     # Fallback: return the original file URL
     url = storage_service.generate_download_presigned_url(

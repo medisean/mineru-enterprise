@@ -10,20 +10,21 @@ Endpoints:
   GET  /api/v4/extract-results/batch/{batch_id} — Batch results
 """
 import uuid
-import time
 import mimetypes
+import hmac
 import structlog
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
+from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
 from app.core.config import settings
 from app.models.models import User, ParseTask, TaskStatus
 from app.schemas.schemas import (
@@ -74,6 +75,68 @@ CONTENT_TYPE_BY_EXTENSION = {
 
 class UnsupportedDownloadedFileType(ValueError):
     pass
+
+
+async def _get_or_create_precision_api_user(db: AsyncSession) -> User:
+    result = await db.execute(select(User).where(User.username == "precision_api_system"))
+    user = result.scalar_one_or_none()
+    if user:
+        return user
+
+    from app.core.security import hash_password
+    user = User(
+        email="precision-api@system.local",
+        username="precision_api_system",
+        hashed_password=hash_password(uuid.uuid4().hex),
+        full_name="Precision API System",
+        role="member",
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+def _auth_error(code: str, msg: str, status_code: int = 401) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"code": code, "msg": msg, "trace_id": _trace_id(), "data": None},
+    )
+
+
+async def _authorize_precision_request(request: Request, db: AsyncSession) -> tuple[Optional[User], Optional[JSONResponse]]:
+    auth = request.headers.get("authorization", "")
+    scheme, _, token = auth.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None, _auth_error("A0202", "Token error")
+
+    configured_token = settings.MINERU_API_TOKEN.strip()
+    if configured_token and hmac.compare_digest(token, configured_token):
+        return await _get_or_create_precision_api_user(db), None
+
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except ExpiredSignatureError:
+        return None, _auth_error("A0211", "Token expired")
+    except JWTError:
+        return None, _auth_error("A0202", "Token error")
+
+    if payload.get("type") != "access":
+        return None, _auth_error("A0202", "Token error")
+
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        return None, _auth_error("A0202", "Token error")
+    return user, None
+
+
+def _validate_callback_seed(callback: Optional[str], seed: Optional[str]) -> Optional[dict]:
+    if callback and not seed:
+        return {"code": -10002, "msg": "seed is required when callback is provided", "trace_id": _trace_id(), "data": None}
+    return None
 
 
 # ── Internal status mapper ──────────────────────────────────────────────────
@@ -234,10 +297,17 @@ async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
 @router.post("/extract/task")
 async def extract_task(
     payload: ExtractTaskRequest,
-    current_user: User = Depends(get_current_user),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a parse task from a file URL (MinerU official API compatible)."""
+    current_user, auth_error = await _authorize_precision_request(request, db)
+    if auth_error:
+        return auth_error
+    callback_error = _validate_callback_seed(payload.callback, payload.seed)
+    if callback_error:
+        return callback_error
+
     try:
         s3_key, filename, size = await _download_url_to_s3(payload.url, current_user.id)
     except UnsupportedDownloadedFileType as e:
@@ -300,10 +370,14 @@ async def extract_task(
 @router.get("/extract/task/{task_id}")
 async def get_extract_task(
     task_id: str,
-    current_user: User = Depends(get_current_user),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Get parse task result (MinerU official API compatible)."""
+    current_user, auth_error = await _authorize_precision_request(request, db)
+    if auth_error:
+        return auth_error
+
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         return {"code": -60012, "msg": "Task not found", "trace_id": _trace_id(), "data": None}
@@ -323,10 +397,17 @@ async def get_extract_task(
 @router.post("/file-urls/batch")
 async def batch_file_urls(
     payload: BatchFileUrlsRequest,
-    current_user: User = Depends(get_current_user),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Get presigned upload URLs for batch file upload."""
+    current_user, auth_error = await _authorize_precision_request(request, db)
+    if auth_error:
+        return auth_error
+    callback_error = _validate_callback_seed(payload.callback, payload.seed)
+    if callback_error:
+        return callback_error
+
     if len(payload.files) > settings.MAX_BATCH_FILES:
         return {"code": -500, "msg": f"Maximum {settings.MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
@@ -342,7 +423,7 @@ async def batch_file_urls(
             return {"code": -60002, "msg": f"File format not supported: {f.name}", "trace_id": _trace_id(), "data": None}
 
         s3_key = f"uploads/{current_user.id}/{uuid.uuid4()}/{f.name}"
-        url = storage_service.generate_upload_presigned_url(s3_key, "application/octet-stream")
+        url = storage_service.generate_upload_presigned_url(s3_key, None)
         file_urls.append(url)
 
         task = ParseTask(
@@ -402,10 +483,17 @@ async def batch_file_urls(
 @router.post("/extract/task/batch")
 async def batch_url_extract(
     payload: BatchUrlExtractRequest,
-    current_user: User = Depends(get_current_user),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Batch parse files by URLs."""
+    current_user, auth_error = await _authorize_precision_request(request, db)
+    if auth_error:
+        return auth_error
+    callback_error = _validate_callback_seed(payload.callback, payload.seed)
+    if callback_error:
+        return callback_error
+
     if len(payload.files) > settings.MAX_BATCH_FILES:
         return {"code": -500, "msg": f"Maximum {settings.MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
@@ -478,10 +566,14 @@ async def batch_url_extract(
 @router.get("/extract-results/batch/{batch_id}")
 async def batch_extract_results(
     batch_id: str,
-    current_user: User = Depends(get_current_user),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Get batch parse results by batch_id."""
+    current_user, auth_error = await _authorize_precision_request(request, db)
+    if auth_error:
+        return auth_error
+
     tasks_q = await db.execute(
         select(ParseTask)
         .where(ParseTask.user_id == current_user.id, ParseTask.batch_id == batch_id)

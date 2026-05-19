@@ -7,8 +7,10 @@ import zipfile
 import signal
 import tempfile
 import time
+import shutil
 import structlog
 from datetime import datetime, timezone
+from pathlib import Path
 from celery import Celery
 
 from app.services.markdown_utils import convert_html_tables_to_markdown
@@ -82,6 +84,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
     _ensure_worker_schema_compat("parse_task_start")
     Session = _SessionFactory
     run_attempt = int(config.get("run_attempt") or 0)
+    tmp_path = None
 
     def update_task_status(status, progress=None, error=None, output_prefix=None):
         with Session() as session:
@@ -114,6 +117,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                             callback_url=task.callback_url,
                             callback_seed=task.callback_seed or "",
                             status=status,
+                            user_id=task.user_id,
                             data_id=task.data_id,
                             progress=task.progress,
                             error_message=task.error_message,
@@ -166,6 +170,8 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
+
+        office_ext = _get_office_extension(input_s3_key)
 
         # Build MinerU CLI command with full parameter set
         backend = config.get("backend", settings.MINERU_BACKEND)
@@ -302,16 +308,17 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                     uploaded_files.append(s3_key)
 
             # Convert Office source files (PPTX/DOCX/XLSX) to PDF for preview
-            office_ext = _get_office_extension(input_s3_key)
             if office_ext:
                 try:
-                    pdf_path = _convert_office_to_pdf(tmp_path)
+                    pdf_path = _convert_office_to_pdf(tmp_path, office_ext)
                     if pdf_path and os.path.exists(pdf_path):
                         pdf_s3_key = f"{output_s3_prefix}/_preview/source_preview.pdf"
                         with open(pdf_path, "rb") as pf:
                             storage_service.upload_bytes(pdf_s3_key, pf.read(), "application/pdf")
                             uploaded_files.append(pdf_s3_key)
+                        pdf_dir = os.path.dirname(pdf_path)
                         os.unlink(pdf_path)
+                        shutil.rmtree(pdf_dir, ignore_errors=True)
                         logger.info("Office→PDF preview generated", task_id=task_id)
                 except Exception as e:
                     logger.warning("Office→PDF conversion failed, skipping preview", task_id=task_id, error=str(e))
@@ -323,13 +330,16 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                     upload_missing_images_from_zip(storage_service, full_zip_key, output_s3_prefix)
                 )
 
-        os.unlink(tmp_path)
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
         update_task_status("success", progress=100, output_prefix=output_s3_prefix)
         self.update_state(state="SUCCESS", meta={"progress": 100, "files": uploaded_files})
         return {"status": "success", "output_prefix": output_s3_prefix, "files": uploaded_files}
 
     except Exception as exc:
         logger.error("Parse task failed", task_id=task_id, error=str(exc))
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
         update_task_status("failed", error=str(exc))
         with Session() as session:
             from app.models.models import ParseTask, TaskStatus
@@ -418,33 +428,89 @@ def _get_office_extension(s3_key: str) -> str | None:
     return ext if ext in office_exts else None
 
 
-def _convert_office_to_pdf(input_path: str) -> str | None:
+def _office_pdf_filter(office_ext: str | None) -> str:
+    filters = {
+        "pptx": "pdf:impress_pdf_Export",
+        "docx": "pdf:writer_pdf_Export",
+        "xlsx": "pdf:calc_pdf_Export",
+    }
+    return filters.get((office_ext or "").lower(), "pdf")
+
+
+def _convert_office_to_pdf(input_path: str, office_ext: str | None = None) -> str | None:
     """Convert an Office file to PDF using LibreOffice headless. Returns the PDF path or None."""
     import subprocess
     output_dir = tempfile.mkdtemp()
+    user_profile_dir = tempfile.mkdtemp()
+    home_dir = tempfile.mkdtemp()
+    runtime_dir = tempfile.mkdtemp()
+    pdf_path = None
+    binaries = [b for b in ("libreoffice", "soffice") if shutil.which(b)]
+    if not binaries:
+        logger.warning("LibreOffice conversion unavailable: libreoffice/soffice not found")
+        shutil.rmtree(output_dir, ignore_errors=True)
+        shutil.rmtree(user_profile_dir, ignore_errors=True)
+        shutil.rmtree(home_dir, ignore_errors=True)
+        shutil.rmtree(runtime_dir, ignore_errors=True)
+        return None
+
     try:
-        result = subprocess.run(
-            [
-                "libreoffice", "--headless", "--convert-to", "pdf",
-                "--outdir", output_dir,
-                input_path,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0:
-            logger.warning("LibreOffice conversion failed", stderr=result.stderr[:500])
+        os.chmod(runtime_dir, 0o700)
+        env = os.environ.copy()
+        env.update({
+            "HOME": home_dir,
+            "XDG_CACHE_HOME": os.path.join(home_dir, ".cache"),
+            "XDG_CONFIG_HOME": os.path.join(home_dir, ".config"),
+            "XDG_RUNTIME_DIR": runtime_dir,
+            "SAL_USE_VCLPLUGIN": "svp",
+            "JAVA_TOOL_OPTIONS": "-Djava.awt.headless=true",
+        })
+        convert_to = _office_pdf_filter(office_ext)
+        last_stderr = ""
+        for binary in binaries:
+            result = subprocess.run(
+                [
+                    binary,
+                    "--headless",
+                    "--invisible",
+                    "--nologo",
+                    "--nofirststartwizard",
+                    "--nodefault",
+                    "--nolockcheck",
+                    "--norestore",
+                    f"-env:UserInstallation={Path(user_profile_dir).as_uri()}",
+                    "--convert-to", convert_to,
+                    "--outdir", output_dir,
+                    input_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=180,
+                env=env,
+            )
+            last_stderr = result.stderr or result.stdout or ""
+            if result.returncode == 0:
+                break
+        else:
+            logger.warning("LibreOffice conversion failed", stderr=last_stderr[:500])
             return None
 
         # Find the generated PDF
         for fname in os.listdir(output_dir):
-            if fname.endswith(".pdf"):
-                return os.path.join(output_dir, fname)
+            if fname.lower().endswith(".pdf"):
+                pdf_path = os.path.join(output_dir, fname)
+                return pdf_path
+        logger.warning("LibreOffice conversion produced no PDF", output_dir=output_dir)
         return None
     except Exception as e:
         logger.warning("LibreOffice conversion exception", error=str(e))
         return None
+    finally:
+        shutil.rmtree(user_profile_dir, ignore_errors=True)
+        shutil.rmtree(home_dir, ignore_errors=True)
+        shutil.rmtree(runtime_dir, ignore_errors=True)
+        if pdf_path is None:
+            shutil.rmtree(output_dir, ignore_errors=True)
 
 
 # ── CPU task entry point ───────────────────────────────────────────────────

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    MINERU_API_TOKEN: str = ""                  # Optional official-compatible Bearer token for /api/v4 APIs
 
     def model_post_init(self, __context) -> None:
         """Validate critical security settings after loading from env."""

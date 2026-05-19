@@ -22,6 +22,7 @@ RUN mirror="${DEBIAN_APT_MIRROR:-$APT_MIRROR}"; \
     poppler-utils \
     curl wget \
     libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui \
+    libreoffice-java-common default-jre-headless \
     fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
