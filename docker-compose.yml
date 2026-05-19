@@ -125,8 +125,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
 
   # ── Celery Worker (parse jobs) ───────────────────────────────────────────────
@@ -149,8 +147,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c ${CPU_WORKER_CONCURRENCY:-1} --loglevel=info
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
@@ -207,8 +203,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
     command: celery -A app.workers.parse_worker.celery_app worker -Q webhook -c 4 --loglevel=info
 
   # ── Flower (Celery monitoring, optional) ────────────────────────────────────
@@ -257,7 +251,6 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./docker/ssl:/etc/nginx/ssl:ro
     depends_on:
       - web
