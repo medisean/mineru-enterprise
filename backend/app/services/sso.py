@@ -63,7 +63,7 @@ class OIDCProvider:
                 token_error=_token_error_summary(token),
             )
             return {}
-        userinfo = await _fetch_userinfo(meta["userinfo_endpoint"], access_token, token)
+        userinfo = await _fetch_userinfo(meta["userinfo_endpoint"], access_token, token, self.client_id)
         if _token_error_summary(userinfo):
             fallback_userinfo = _userinfo_from_token_response(token)
             if fallback_userinfo:
@@ -158,7 +158,7 @@ class OAuth2Provider:
             )
             return {}
 
-        userinfo = await _fetch_userinfo(self.userinfo_url, access_token, token)
+        userinfo = await _fetch_userinfo(self.userinfo_url, access_token, token, self.client_id)
         logger.info(
             "OAuth2 userinfo response parsed",
             userinfo_keys=_safe_dict_keys(_unwrap_payload(userinfo)),
@@ -323,7 +323,7 @@ async def _fetch_authorization_code_token(
         return token
 
 
-async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: dict) -> dict:
+async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: dict, client_id: str = "") -> dict:
     token_type = _extract_token_type(token_response)
     attempts: list[tuple[str, dict, dict]] = [
         ("bearer_authorization", {"Authorization": f"Bearer {access_token}"}, {}),
@@ -334,12 +334,25 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
         ("access_token_header", {"access_token": access_token}, {}),
         ("access_token_query", {}, {"access_token": access_token}),
     ])
+    if client_id:
+        attempts.extend([
+            ("bearer_authorization_client_id_query", {"Authorization": f"Bearer {access_token}"}, {"client_id": client_id}),
+            ("access_token_header_client_id_header", {"access_token": access_token, "client_id": client_id}, {}),
+            ("access_token_query_client_id_query", {}, {"access_token": access_token, "client_id": client_id}),
+        ])
+        if token_type and token_type.lower() != "bearer":
+            attempts.append((
+                f"{token_type}_authorization_client_id_query",
+                {"Authorization": f"{token_type} {access_token}"},
+                {"client_id": client_id},
+            ))
 
     last_payload: dict = {}
     logger.info(
         "SSO userinfo request sequence started",
         userinfo_url=userinfo_url,
         token_type=token_type or "",
+        client_id_present=bool(client_id),
         attempt_methods=[attempt[0] for attempt in attempts],
     )
     async with httpx.AsyncClient() as client:
