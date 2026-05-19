@@ -63,13 +63,18 @@ class OIDCProvider:
                 token_error=_token_error_summary(token),
             )
             return {}
-        async with httpx.AsyncClient() as client:
-            userinfo = await client.get(
-                meta["userinfo_endpoint"],
-                headers={"Authorization": f"Bearer {access_token}"},
+        userinfo = await _fetch_userinfo(meta["userinfo_endpoint"], access_token, token)
+        if _token_error_summary(userinfo):
+            fallback_userinfo = _userinfo_from_token_response(token)
+            if fallback_userinfo:
+                return fallback_userinfo
+            logger.warning(
+                "OIDC userinfo endpoint returned no user info",
+                userinfo_keys=_safe_dict_keys(userinfo),
+                userinfo_error=_token_error_summary(userinfo),
             )
-            userinfo.raise_for_status()
-            return userinfo.json()
+            return {}
+        return userinfo
 
 
 class OAuth2Provider:
@@ -106,16 +111,8 @@ class OAuth2Provider:
             )
             return {}
 
-        # Some corporate IdPs return non-standard token_type values such as
-        # "access_token". Use a plain HTTP client for userinfo so Authlib does
-        # not reject the already-issued access token while attaching auth.
-        async with httpx.AsyncClient() as client:
-            userinfo = await client.get(
-                self.userinfo_url,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            userinfo.raise_for_status()
-            return self._normalize_user_info(userinfo.json())
+        userinfo = await _fetch_userinfo(self.userinfo_url, access_token, token)
+        return self._normalize_user_info(userinfo)
 
     def _normalize_user_info(self, raw: dict) -> dict:
         data = _unwrap_payload(raw)
@@ -143,7 +140,11 @@ class OAuth2Provider:
             or str(subject or "")
         )
         if not subject:
-            logger.warning("OAuth2 userinfo missing subject", userinfo_keys=_safe_dict_keys(data))
+            logger.warning(
+                "OAuth2 userinfo missing subject",
+                userinfo_keys=_safe_dict_keys(data),
+                userinfo_error=_token_error_summary(data),
+            )
             return {}
         return {
             "sso_subject": str(subject),
@@ -217,6 +218,45 @@ async def _fetch_authorization_code_token(
         return token
 
 
+async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: dict) -> dict:
+    token_type = _extract_token_type(token_response)
+    attempts: list[tuple[str, dict, dict]] = [
+        ("bearer_authorization", {"Authorization": f"Bearer {access_token}"}, {}),
+    ]
+    if token_type and token_type.lower() != "bearer":
+        attempts.append((f"{token_type}_authorization", {"Authorization": f"{token_type} {access_token}"}, {}))
+    attempts.extend([
+        ("access_token_header", {"access_token": access_token}, {}),
+        ("access_token_query", {}, {"access_token": access_token}),
+    ])
+
+    last_payload: dict = {}
+    async with httpx.AsyncClient() as client:
+        for auth_method, headers, params in attempts:
+            try:
+                response = await client.get(userinfo_url, headers=headers, params=params)
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:
+                logger.warning("SSO userinfo request failed", userinfo_auth_method=auth_method, error=str(exc))
+                continue
+
+            last_payload = payload
+            error_summary = _token_error_summary(payload)
+            if not error_summary:
+                if auth_method != "bearer_authorization":
+                    logger.info("SSO userinfo request succeeded with fallback auth", userinfo_auth_method=auth_method)
+                return payload
+            logger.warning(
+                "SSO userinfo endpoint returned error payload",
+                userinfo_auth_method=auth_method,
+                userinfo_keys=_safe_dict_keys(payload),
+                userinfo_error=error_summary,
+            )
+
+    return last_payload
+
+
 def _safe_dict_keys(value: object) -> list[str]:
     if not isinstance(value, dict):
         return []
@@ -246,6 +286,15 @@ def _unwrap_payload(value: dict) -> dict:
 def _extract_access_token(token: dict) -> str:
     for data in (token, _unwrap_payload(token)):
         for key in ("access_token", "accessToken", "access-token", "token"):
+            value = data.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return ""
+
+
+def _extract_token_type(token: dict) -> str:
+    for data in (token, _unwrap_payload(token)):
+        for key in ("token_type", "tokenType"):
             value = data.get(key)
             if isinstance(value, str) and value:
                 return value
