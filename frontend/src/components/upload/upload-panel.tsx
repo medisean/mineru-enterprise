@@ -198,7 +198,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
             <option value="korean">{t("upload.langKorean")}</option>
             <option value="chinese_cht">{t("upload.langCht")}</option>
             <option value="latin">{t("upload.langLatin")}</option>
-            <option value="russian">{t("upload.langRussian")}</option>
+            <option value="cyrillic">{t("upload.langRussian")}</option>
           </select>
         </div>
         <div>

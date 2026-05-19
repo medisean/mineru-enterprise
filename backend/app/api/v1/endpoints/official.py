@@ -186,7 +186,7 @@ async def _save_upload_as_task(
         backend=backend,
         output_format=output_format,
         language=lang,
-        is_ocr=_parse_method_to_ocr(parse_method) if _parse_method_to_ocr(parse_method) is not None else False,
+        is_ocr=_parse_method_to_ocr(parse_method),
         enable_formula=formula_enable,
         enable_table=table_enable,
         page_ranges=_parse_page_range(start_page_id, end_page_id),

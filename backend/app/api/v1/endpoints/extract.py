@@ -258,7 +258,7 @@ async def extract_task(
         backend=backend,
         output_format=output_format,
         language=payload.language or "ch",
-        is_ocr=payload.is_ocr if payload.is_ocr is not None else False,
+        is_ocr=payload.is_ocr,
         enable_formula=payload.enable_formula,
         enable_table=payload.enable_table,
         page_ranges=payload.page_ranges,
@@ -353,7 +353,7 @@ async def batch_file_urls(
             backend=backend,
             output_format=output_format,
             language=payload.language or "ch",
-            is_ocr=f.is_ocr if f.is_ocr is not None else False,
+            is_ocr=f.is_ocr,
             enable_formula=payload.enable_formula,
             enable_table=payload.enable_table,
             page_ranges=f.page_ranges,
@@ -365,17 +365,17 @@ async def batch_file_urls(
             organization_id=current_user.organization_id,
         )
         db.add(task)
-        created_tasks.append(task)
+        created_tasks.append((task, f.is_ocr))
 
     await db.commit()
 
-    for task in created_tasks:
+    for task, is_ocr in created_tasks:
         await db.refresh(task)
         config = {
             "backend": backend,
             "output_format": task.output_format,
             "language": task.language,
-            "is_ocr": task.is_ocr,
+            "is_ocr": is_ocr,
             "enable_formula": task.enable_formula,
             "enable_table": task.enable_table,
             "page_ranges": task.page_ranges,
@@ -432,7 +432,7 @@ async def batch_url_extract(
             backend=backend,
             output_format=output_format,
             language=payload.language or "ch",
-            is_ocr=f.is_ocr if f.is_ocr is not None else False,
+            is_ocr=f.is_ocr,
             enable_formula=payload.enable_formula,
             enable_table=payload.enable_table,
             page_ranges=f.page_ranges,
@@ -444,17 +444,17 @@ async def batch_url_extract(
             organization_id=current_user.organization_id,
         )
         db.add(task)
-        created_tasks.append(task)
+        created_tasks.append((task, f.is_ocr))
 
     await db.commit()
 
-    for task in created_tasks:
+    for task, is_ocr in created_tasks:
         await db.refresh(task)
         config = {
             "backend": backend,
             "output_format": task.output_format,
             "language": task.language,
-            "is_ocr": task.is_ocr,
+            "is_ocr": is_ocr,
             "enable_formula": task.enable_formula,
             "enable_table": task.enable_table,
             "page_ranges": task.page_ranges,

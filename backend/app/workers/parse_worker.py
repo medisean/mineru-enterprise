@@ -179,7 +179,6 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         extra_formats = normalize_extra_formats(config.get("extra_formats"), config.get("output_format"))
         server_url = config.get("server_url") or parse_options.get("url") or parse_options.get("server-url")
         api_url = config.get("api_url") or parse_options.get("api-url")
-        image_analysis = config.get("image_analysis", parse_options.get("image-analysis", True))
 
         with tempfile.TemporaryDirectory() as output_dir:
             cmd = [
@@ -205,7 +204,6 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             cmd += ["-f", _bool_cli(enable_formula)]
             cmd += ["-t", _bool_cli(enable_table)]
-            cmd += ["--image-analysis", _bool_cli(image_analysis)]
 
             start_page, end_page = _page_range_to_start_end(page_ranges)
             if start_page is not None:
@@ -220,7 +218,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             # Any extra MinerU 3.x CLI options from parse_options.
             handled_options = {
-                "url", "server-url", "api-url", "image-analysis",
+                "url", "server-url", "api-url",
                 "output-format", "device", "backend", "pages", "formats",
                 "lang", "ocr", "formula", "table",
             }

@@ -106,7 +106,7 @@ class ParseTask(Base):
     backend: Mapped[str] = mapped_column(String(64), default="")
     output_format: Mapped[str] = mapped_column(String(32), default="markdown")
     language: Mapped[str] = mapped_column(String(16), default="")
-    is_ocr: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_ocr: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     enable_formula: Mapped[bool] = mapped_column(Boolean, default=True)
     enable_table: Mapped[bool] = mapped_column(Boolean, default=True)
     page_ranges: Mapped[str] = mapped_column(String(128), nullable=True)

@@ -225,7 +225,7 @@ async def agent_parse_url(
         backend="pipeline",
         output_format="markdown",
         language=payload.language or "ch",
-        is_ocr=payload.is_ocr if payload.is_ocr is not None else False,
+        is_ocr=payload.is_ocr,
         enable_formula=payload.enable_formula,
         enable_table=payload.enable_table,
         page_ranges=payload.page_range,  # Agent uses "page_range" (singular)
@@ -288,7 +288,7 @@ async def agent_parse_file(
         backend="pipeline",
         output_format="markdown",
         language=payload.language or "ch",
-        is_ocr=payload.is_ocr if payload.is_ocr is not None else False,
+        is_ocr=payload.is_ocr,
         enable_formula=payload.enable_formula,
         enable_table=payload.enable_table,
         page_ranges=payload.page_range,

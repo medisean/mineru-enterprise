@@ -146,13 +146,14 @@ class Settings(BaseSettings):
     ]
 
     # ── MinerU Parse Options ─────────────────────────────────────────────
-    MINERU_DEFAULT_OCR: bool = False              # auto-detect for scanned PDFs
+    MINERU_DEFAULT_OCR: Optional[bool] = None     # None=auto, True=force OCR, False=text-only
     MINERU_DEFAULT_ENABLE_FORMULA: bool = True
     MINERU_DEFAULT_ENABLE_TABLE: bool = True
     MINERU_DEFAULT_PAGE_RANGES: Optional[str] = None  # e.g. "1-10" or "2,4-6"
     MINERU_SUPPORTED_LANGUAGES: List[str] = [
-        "ch", "ch_server", "en", "japan", "korean", "chinese_cht",
-        "latin", "arabic", "cyrillic", "devanagari",
+        "ch", "ch_server", "ch_lite", "en", "japan", "korean", "chinese_cht",
+        "ta", "te", "ka", "th", "el", "latin", "arabic", "east_slavic",
+        "cyrillic", "devanagari",
     ]
 
 

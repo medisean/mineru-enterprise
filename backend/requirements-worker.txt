@@ -2,7 +2,7 @@
 -r requirements.txt
 
 # MinerU (latest v3 series) — include [pipeline] extra for torch/transformers/albumentations etc.
-mineru[pipeline]>=3.0.0
+mineru[pipeline]>=3.1.8
 
 # Required by hybrid-auto-engine / vlm-auto-engine backends (device_map needs accelerate)
 accelerate>=1.0.0
