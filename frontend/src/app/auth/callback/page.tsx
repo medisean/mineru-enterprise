@@ -12,6 +12,8 @@ import { useT } from "@/lib/i18n/use-translation";
 import { t as _t } from "@/lib/i18n";
 import { useI18nStore } from "@/lib/i18n-store";
 
+const callbackExchanges = new Map<string, Promise<void>>();
+
 function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -22,6 +24,8 @@ function CallbackContent() {
   const locale = useI18nStore((s) => s.locale);
 
   useEffect(() => {
+    let isCurrent = true;
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
     const code = searchParams.get("code");
     const state = searchParams.get("state");
     const stateProvider = state?.includes(":") ? state.split(":", 1)[0] : "";
@@ -33,18 +37,36 @@ function CallbackContent() {
       return;
     }
 
-    (async () => {
-      try {
-        const res = await authApi.ssoCallback(provider, code, state);
-        setTokens(res.data.access_token, res.data.refresh_token);
-        await fetchMe();
+    const callbackKey = `${provider}:${state}:${code}`;
+    const existingExchange = callbackExchanges.get(callbackKey);
+    const exchange = existingExchange ?? (async () => {
+      const res = await authApi.ssoCallback(provider, code, state);
+      setTokens(res.data.access_token, res.data.refresh_token);
+      await fetchMe();
+    })();
+
+    if (!existingExchange) {
+      callbackExchanges.set(callbackKey, exchange);
+    }
+
+    exchange
+      .then(() => {
+        if (!isCurrent) return;
         setStatus("success");
-        setTimeout(() => router.push("/dashboard"), 800);
-      } catch (err: unknown) {
+        redirectTimer = setTimeout(() => router.replace("/dashboard"), 500);
+      })
+      .catch((err: unknown) => {
+        if (!isCurrent) return;
         setStatus("error");
         setErrorMsg(err instanceof Error ? err.message : t("callback.ssoFailed"));
+      });
+
+    return () => {
+      isCurrent = false;
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
       }
-    })();
+    };
   }, [searchParams, setTokens, fetchMe, router, t]);
 
   return (
