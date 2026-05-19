@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     # ── SSO — Generic OIDC ────────────────────────────────────────────────
     SSO_AUTO_LOGIN_ENABLED: bool = False
     SSO_DEFAULT_PROVIDER: str = "oidc"
+    SSO_DEBUG_LOG_SECRETS: bool = False
 
     OIDC_ENABLED: bool = False
     OIDC_ISSUER: str = ""

@@ -102,6 +102,14 @@ class OAuth2Provider:
         )
         url, _ = client.create_authorization_url(self.authorization_url, state=state)
         logger.info("OAuth2 authorization URL generated", state_prefix=_state_prefix(state))
+        _log_sso_secret_debug(
+            "OAuth2 authorization URL generated with secrets",
+            authorization_url=url,
+            client_id=self.client_id,
+            state=state,
+            redirect_uri=redirect_uri,
+            scope=settings.OAUTH2_SCOPE,
+        )
         return url
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict:
@@ -112,6 +120,16 @@ class OAuth2Provider:
             redirect_uri=redirect_uri,
             token_auth_method=settings.OAUTH2_TOKEN_AUTH_METHOD,
             code_present=bool(code),
+        )
+        _log_sso_secret_debug(
+            "OAuth2 code exchange started with secrets",
+            code=code,
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            redirect_uri=redirect_uri,
+            token_url=self.token_url,
+            userinfo_url=self.userinfo_url,
+            token_auth_method=settings.OAUTH2_TOKEN_AUTH_METHOD,
         )
         token = await self._fetch_token(code, redirect_uri)
 
@@ -124,6 +142,7 @@ class OAuth2Provider:
             token_type=_extract_token_type(token) or "",
             id_token_present=_has_id_token(token),
         )
+        _log_sso_secret_debug("OAuth2 token response parsed with secrets", token_response=token)
         if not access_token:
             user_info = _userinfo_from_token_response(token)
             if user_info:
@@ -145,6 +164,7 @@ class OAuth2Provider:
             userinfo_keys=_safe_dict_keys(_unwrap_payload(userinfo)),
             userinfo_error=_token_error_summary(_unwrap_payload(userinfo)),
         )
+        _log_sso_secret_debug("OAuth2 userinfo response parsed with secrets", userinfo_response=userinfo)
         return self._normalize_user_info(userinfo)
 
     def _normalize_user_info(self, raw: dict) -> dict:
@@ -185,6 +205,13 @@ class OAuth2Provider:
             email_present=bool(email),
             name_present=bool(name),
             avatar_present=bool(data.get(settings.OAUTH2_AVATAR_FIELD) or data.get("picture") or data.get("avatar_url") or data.get("avatarUrl")),
+        )
+        _log_sso_secret_debug(
+            "OAuth2 userinfo normalized with secrets",
+            normalized_subject=str(subject),
+            normalized_email=email or f"{subject}@oauth2.local",
+            normalized_name=name,
+            raw_userinfo=data,
         )
         return {
             "sso_subject": str(subject),
@@ -248,6 +275,17 @@ async def _fetch_authorization_code_token(
         code_present=bool(code),
         client_secret_present=bool(client_secret),
     )
+    _log_sso_secret_debug(
+        "SSO token request sending with secrets",
+        token_url=token_url,
+        redirect_uri=redirect_uri,
+        token_auth_method=token_auth_method,
+        form=form,
+        encoded_form=urlencode(form),
+        headers=headers,
+        basic_auth_client_id=client_id if auth else None,
+        basic_auth_client_secret=client_secret if auth else None,
+    )
     async with httpx.AsyncClient() as client:
         response = await client.post(
             token_url,
@@ -256,6 +294,13 @@ async def _fetch_authorization_code_token(
             auth=auth,
         )
         logger.info("SSO token response received", token_url=token_url, status_code=response.status_code)
+        _log_sso_secret_debug(
+            "SSO token response received with secrets",
+            token_url=token_url,
+            status_code=response.status_code,
+            response_text=response.text,
+            response_headers=dict(response.headers),
+        )
         response.raise_for_status()
         token = response.json()
         logger.info(
@@ -267,6 +312,7 @@ async def _fetch_authorization_code_token(
             token_type=_extract_token_type(token) or "",
             id_token_present=_has_id_token(token),
         )
+        _log_sso_secret_debug("SSO token response decoded with secrets", token_response=token)
         if _token_error_summary(token):
             logger.warning(
                 "SSO token endpoint returned error payload",
@@ -305,6 +351,14 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
                 header_keys=sorted(headers.keys()),
                 param_keys=sorted(params.keys()),
             )
+            _log_sso_secret_debug(
+                "SSO userinfo request sending with secrets",
+                userinfo_url=userinfo_url,
+                userinfo_auth_method=auth_method,
+                headers=headers,
+                params=params,
+                access_token=access_token,
+            )
             try:
                 response = await client.get(userinfo_url, headers=headers, params=params)
                 logger.info(
@@ -312,6 +366,14 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
                     userinfo_url=userinfo_url,
                     userinfo_auth_method=auth_method,
                     status_code=response.status_code,
+                )
+                _log_sso_secret_debug(
+                    "SSO userinfo response received with secrets",
+                    userinfo_url=userinfo_url,
+                    userinfo_auth_method=auth_method,
+                    status_code=response.status_code,
+                    response_text=response.text,
+                    response_headers=dict(response.headers),
                 )
                 response.raise_for_status()
                 payload = response.json()
@@ -328,6 +390,11 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
                     userinfo_keys=_safe_dict_keys(_unwrap_payload(payload)),
                     used_fallback=auth_method != "bearer_authorization",
                 )
+                _log_sso_secret_debug(
+                    "SSO userinfo request succeeded with secrets",
+                    userinfo_auth_method=auth_method,
+                    userinfo_payload=payload,
+                )
                 return payload
             logger.warning(
                 "SSO userinfo endpoint returned error payload",
@@ -343,6 +410,11 @@ def _safe_dict_keys(value: object) -> list[str]:
     if not isinstance(value, dict):
         return []
     return sorted(str(key) for key in value.keys())
+
+
+def _log_sso_secret_debug(event: str, **fields) -> None:
+    if settings.SSO_DEBUG_LOG_SECRETS:
+        logger.warning(event, **fields)
 
 
 def _token_error_summary(value: object) -> dict:
