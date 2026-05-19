@@ -158,7 +158,13 @@ class OAuth2Provider:
             )
             return {}
 
-        userinfo = await _fetch_userinfo(self.userinfo_url, access_token, token, self.client_id)
+        userinfo = await _fetch_userinfo(
+            self.userinfo_url,
+            access_token,
+            token,
+            self.client_id,
+            settings.OAUTH2_USERINFO_SCOPE,
+        )
         logger.info(
             "OAuth2 userinfo response parsed",
             userinfo_keys=_safe_dict_keys(_unwrap_payload(userinfo)),
@@ -323,29 +329,94 @@ async def _fetch_authorization_code_token(
         return token
 
 
-async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: dict, client_id: str = "") -> dict:
+async def _fetch_userinfo(
+    userinfo_url: str,
+    access_token: str,
+    token_response: dict,
+    client_id: str = "",
+    userinfo_scope: str = "",
+) -> dict:
     token_type = _extract_token_type(token_response)
-    attempts: list[tuple[str, dict, dict]] = [
-        ("bearer_authorization", {"Authorization": f"Bearer {access_token}"}, {}),
-    ]
-    if token_type and token_type.lower() != "bearer":
-        attempts.append((f"{token_type}_authorization", {"Authorization": f"{token_type} {access_token}"}, {}))
+    attempts: list[dict] = []
+    if client_id and userinfo_scope:
+        form = {
+            "client_id": client_id,
+            "access_token": access_token,
+        }
+        if userinfo_scope:
+            form["scope"] = userinfo_scope
+        attempts.append({
+            "auth_method": "form_client_id_access_token_scope",
+            "method": "POST",
+            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+            "params": {},
+            "form": form,
+        })
     attempts.extend([
-        ("access_token_header", {"access_token": access_token}, {}),
-        ("access_token_query", {}, {"access_token": access_token}),
+        {
+            "auth_method": "bearer_authorization",
+            "method": "GET",
+            "headers": {"Authorization": f"Bearer {access_token}"},
+            "params": {},
+            "form": {},
+        },
+    ])
+    if token_type and token_type.lower() != "bearer":
+        attempts.append({
+            "auth_method": f"{token_type}_authorization",
+            "method": "GET",
+            "headers": {"Authorization": f"{token_type} {access_token}"},
+            "params": {},
+            "form": {},
+        })
+    attempts.extend([
+        {
+            "auth_method": "access_token_header",
+            "method": "GET",
+            "headers": {"access_token": access_token},
+            "params": {},
+            "form": {},
+        },
+        {
+            "auth_method": "access_token_query",
+            "method": "GET",
+            "headers": {},
+            "params": {"access_token": access_token},
+            "form": {},
+        },
     ])
     if client_id:
         attempts.extend([
-            ("bearer_authorization_client_id_query", {"Authorization": f"Bearer {access_token}"}, {"client_id": client_id}),
-            ("access_token_header_client_id_header", {"access_token": access_token, "client_id": client_id}, {}),
-            ("access_token_query_client_id_query", {}, {"access_token": access_token, "client_id": client_id}),
+            {
+                "auth_method": "bearer_authorization_client_id_query",
+                "method": "GET",
+                "headers": {"Authorization": f"Bearer {access_token}"},
+                "params": {"client_id": client_id},
+                "form": {},
+            },
+            {
+                "auth_method": "access_token_header_client_id_header",
+                "method": "GET",
+                "headers": {"access_token": access_token, "client_id": client_id},
+                "params": {},
+                "form": {},
+            },
+            {
+                "auth_method": "access_token_query_client_id_query",
+                "method": "GET",
+                "headers": {},
+                "params": {"access_token": access_token, "client_id": client_id},
+                "form": {},
+            },
         ])
         if token_type and token_type.lower() != "bearer":
-            attempts.append((
-                f"{token_type}_authorization_client_id_query",
-                {"Authorization": f"{token_type} {access_token}"},
-                {"client_id": client_id},
-            ))
+            attempts.append({
+                "auth_method": f"{token_type}_authorization_client_id_query",
+                "method": "GET",
+                "headers": {"Authorization": f"{token_type} {access_token}"},
+                "params": {"client_id": client_id},
+                "form": {},
+            })
 
     last_payload: dict = {}
     logger.info(
@@ -353,37 +424,58 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
         userinfo_url=userinfo_url,
         token_type=token_type or "",
         client_id_present=bool(client_id),
-        attempt_methods=[attempt[0] for attempt in attempts],
+        userinfo_scope=userinfo_scope,
+        attempt_methods=[attempt["auth_method"] for attempt in attempts],
     )
     async with httpx.AsyncClient() as client:
-        for auth_method, headers, params in attempts:
+        for attempt in attempts:
+            auth_method = attempt["auth_method"]
+            request_method = attempt["method"]
+            headers = attempt["headers"]
+            params = attempt["params"]
+            form = attempt["form"]
             logger.info(
                 "SSO userinfo request sending",
                 userinfo_url=userinfo_url,
                 userinfo_auth_method=auth_method,
+                request_method=request_method,
                 header_keys=sorted(headers.keys()),
                 param_keys=sorted(params.keys()),
+                form_keys=sorted(key for key in form.keys() if key != "access_token"),
             )
             _log_sso_secret_debug(
                 "SSO userinfo request sending with secrets",
                 userinfo_url=userinfo_url,
                 userinfo_auth_method=auth_method,
+                request_method=request_method,
                 headers=headers,
                 params=params,
+                form=form,
+                encoded_form=urlencode(form),
                 access_token=access_token,
             )
             try:
-                response = await client.get(userinfo_url, headers=headers, params=params)
+                if request_method == "POST":
+                    response = await client.post(
+                        userinfo_url,
+                        content=urlencode(form),
+                        headers=headers,
+                        params=params,
+                    )
+                else:
+                    response = await client.get(userinfo_url, headers=headers, params=params)
                 logger.info(
                     "SSO userinfo response received",
                     userinfo_url=userinfo_url,
                     userinfo_auth_method=auth_method,
+                    request_method=request_method,
                     status_code=response.status_code,
                 )
                 _log_sso_secret_debug(
                     "SSO userinfo response received with secrets",
                     userinfo_url=userinfo_url,
                     userinfo_auth_method=auth_method,
+                    request_method=request_method,
                     status_code=response.status_code,
                     response_text=response.text,
                     response_headers=dict(response.headers),
@@ -400,8 +492,9 @@ async def _fetch_userinfo(userinfo_url: str, access_token: str, token_response: 
                 logger.info(
                     "SSO userinfo request succeeded",
                     userinfo_auth_method=auth_method,
+                    request_method=request_method,
                     userinfo_keys=_safe_dict_keys(_unwrap_payload(payload)),
-                    used_fallback=auth_method != "bearer_authorization",
+                    used_fallback=auth_method not in {"form_client_id_access_token_scope", "bearer_authorization"},
                 )
                 _log_sso_secret_debug(
                     "SSO userinfo request succeeded with secrets",

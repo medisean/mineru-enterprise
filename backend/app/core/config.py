@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     OAUTH2_CLIENT_ID: str = ""
     OAUTH2_CLIENT_SECRET: str = ""
     OAUTH2_SCOPE: str = "openid email profile"
+    OAUTH2_USERINFO_SCOPE: str = "base.profile"
     OAUTH2_TOKEN_AUTH_METHOD: str = "client_secret_post"  # client_secret_post | client_secret_basic
     OAUTH2_USER_ID_FIELD: str = "sub"
     OAUTH2_EMAIL_FIELD: str = "email"
