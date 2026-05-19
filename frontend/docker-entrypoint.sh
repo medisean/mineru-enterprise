@@ -11,6 +11,7 @@ const config = {
   NEXT_PUBLIC_OAUTH2_ENABLED: process.env.NEXT_PUBLIC_OAUTH2_ENABLED || "false",
   NEXT_PUBLIC_WECHAT_WORK_ENABLED: process.env.NEXT_PUBLIC_WECHAT_WORK_ENABLED || "false",
   NEXT_PUBLIC_DINGTALK_ENABLED: process.env.NEXT_PUBLIC_DINGTALK_ENABLED || "false",
+  NEXT_PUBLIC_LOCAL_LOGIN_ENABLED: process.env.NEXT_PUBLIC_LOCAL_LOGIN_ENABLED || "true",
 };
 
 fs.writeFileSync(
@@ -21,4 +22,3 @@ fs.writeFileSync(
 NODE
 
 exec "$@"
-

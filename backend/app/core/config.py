@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     SSO_AUTO_LOGIN_ENABLED: bool = False
     SSO_DEFAULT_PROVIDER: str = "oidc"
     SSO_DEBUG_LOG_SECRETS: bool = False
+    LOCAL_LOGIN_ENABLED: bool = True
 
     OIDC_ENABLED: bool = False
     OIDC_ISSUER: str = ""

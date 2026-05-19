@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { authApi } from "@/lib/api";
 import { startSSOLogin } from "@/lib/sso";
-import { isRuntimeEnabled } from "@/lib/runtime-config";
+import { getRuntimeEnv, isRuntimeEnabled } from "@/lib/runtime-config";
 import { Loader2, FileText } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
@@ -27,6 +27,10 @@ export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [localLoginEnabled, setLocalLoginEnabled] = useState(
+    () => getRuntimeEnv("NEXT_PUBLIC_LOCAL_LOGIN_ENABLED", "true") === "true"
+  );
+  const [serverProviders, setServerProviders] = useState<Record<string, boolean> | null>(null);
 
   // Login form
   const [username, setUsername] = useState("");
@@ -43,6 +47,24 @@ export default function LoginPage() {
       router.replace("/dashboard");
     }
   }, [accessToken, hasHydrated, router]);
+
+  useEffect(() => {
+    let active = true;
+    authApi
+      .getSSOConfig()
+      .then((res) => {
+        if (!active) return;
+        setLocalLoginEnabled(res.data.local_login_enabled !== false);
+        setServerProviders(res.data.providers ?? null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setServerProviders(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +123,9 @@ export default function LoginPage() {
     }
   };
 
-  const enabledSSOProviders = SSO_PROVIDERS.filter((p) => isRuntimeEnabled(p.flag));
+  const enabledSSOProviders = SSO_PROVIDERS.filter(
+    (p) => (isRuntimeEnabled(p.flag) || serverProviders?.[p.id] === true) && (serverProviders?.[p.id] ?? true)
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -115,27 +139,28 @@ export default function LoginPage() {
         </Link>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-          {/* Tab switch */}
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            <button
-              onClick={() => { setIsRegister(false); setError(""); }}
-              className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${
-                !isRegister ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
-              }`}
-            >
-              {t("login.tabLogin")}
-            </button>
-            <button
-              onClick={() => { setIsRegister(true); setError(""); }}
-              className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${
-                isRegister ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
-              }`}
-            >
-              {t("login.tabRegister")}
-            </button>
-          </div>
+          {localLoginEnabled && (
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => { setIsRegister(false); setError(""); }}
+                className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${
+                  !isRegister ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+                }`}
+              >
+                {t("login.tabLogin")}
+              </button>
+              <button
+                onClick={() => { setIsRegister(true); setError(""); }}
+                className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${
+                  isRegister ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+                }`}
+              >
+                {t("login.tabRegister")}
+              </button>
+            </div>
+          )}
 
-          {!isRegister ? (
+          {localLoginEnabled && (!isRegister ? (
             /* Login form */
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
@@ -228,19 +253,21 @@ export default function LoginPage() {
                 {t("login.submitRegister")}
               </button>
             </form>
-          )}
+          ))}
 
           {/* SSO section */}
           {enabledSSOProviders.length > 0 && (
             <>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-100" />
+              {localLoginEnabled && (
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-100" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-white px-3 text-xs text-gray-400">{t("login.orSSO")}</span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center">
-                  <span className="bg-white px-3 text-xs text-gray-400">{t("login.orSSO")}</span>
-                </div>
-              </div>
+              )}
               <div className="space-y-2">
                 {enabledSSOProviders.map((provider) => (
                   <button
@@ -254,6 +281,7 @@ export default function LoginPage() {
               </div>
             </>
           )}
+          {!localLoginEnabled && error && <p className="text-xs text-red-500">{error}</p>}
         </div>
 
       </div>

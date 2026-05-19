@@ -103,6 +103,9 @@ def _provider_enabled(provider: str) -> bool:
 # ── Local auth ────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+    if not settings.LOCAL_LOGIN_ENABLED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Username/password login is disabled")
+
     result = await db.execute(
         select(User).where(
             (User.email == payload.username) | (User.username == payload.username)
@@ -127,6 +130,9 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/register", response_model=UserOut)
 async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
+    if not settings.LOCAL_LOGIN_ENABLED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Username/password registration is disabled")
+
     existing = await db.execute(
         select(User).where((User.email == payload.email) | (User.username == payload.username))
     )
@@ -170,6 +176,8 @@ async def sso_config():
     return {
         "auto_login_enabled": settings.SSO_AUTO_LOGIN_ENABLED and _provider_enabled(provider),
         "default_provider": provider,
+        "local_login_enabled": settings.LOCAL_LOGIN_ENABLED,
+        "logout_visible": settings.LOCAL_LOGIN_ENABLED,
         "providers": {
             "oidc": settings.OIDC_ENABLED and oidc_provider is not None,
             "oauth2": settings.OAUTH2_ENABLED and oauth2_provider is not None,

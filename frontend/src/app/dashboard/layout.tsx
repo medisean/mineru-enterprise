@@ -8,8 +8,8 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { tasksApi } from "@/lib/api";
-import { getWebSocketBaseUrl } from "@/lib/runtime-config";
+import { authApi, tasksApi } from "@/lib/api";
+import { getRuntimeEnv, getWebSocketBaseUrl } from "@/lib/runtime-config";
 import {
   LogOut, FileText, Plus, Loader2, PanelLeftClose, PanelLeftOpen,
   CheckCircle2, XCircle, Clock, AlertCircle, LayoutDashboard,
@@ -48,6 +48,7 @@ export default function DashboardLayout({
 
   const [collapsed, setCollapsed] = useState(false);
   const [recentFallbackTick, setRecentFallbackTick] = useState(0);
+  const runtimeLogoutVisible = getRuntimeEnv("NEXT_PUBLIC_LOCAL_LOGIN_ENABLED", "true") === "true";
 
   // ── All hooks MUST be called before any conditional return ──
 
@@ -63,7 +64,14 @@ export default function DashboardLayout({
     enabled: enableRecentTasks,
   });
 
+  const { data: authConfig } = useQuery({
+    queryKey: ["sso-config"],
+    queryFn: () => authApi.getSSOConfig().then((r) => r.data),
+    enabled: !!accessToken,
+  });
+
   const recentTasks: RecentTask[] = recentData?.items ?? [];
+  const showLogout = authConfig?.logout_visible ?? runtimeLogoutVisible;
 
   useEffect(() => {
     if (!enableRecentTasks) return;
@@ -349,13 +357,15 @@ export default function DashboardLayout({
                   <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>
                 </div>
               </div>
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                {t("sidebar.logout")}
-              </button>
+              {showLogout && (
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {t("sidebar.logout")}
+                </button>
+              )}
             </div>
           )}
           {collapsed && (
@@ -366,13 +376,15 @@ export default function DashboardLayout({
               >
                 {user?.full_name?.[0] || user?.username?.[0] || "U"}
               </div>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors"
-                title={t("sidebar.logout")}
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
+              {showLogout && (
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors"
+                  title={t("sidebar.logout")}
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           )}
         </div>
