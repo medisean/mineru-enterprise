@@ -293,16 +293,22 @@ async def _get_or_create_sso_user(db: AsyncSession, info: dict, provider: SSOPro
     user = result.scalar_one_or_none()
 
     if not user:
+        is_first_user = (await db.scalar(select(func.count(User.id))) or 0) == 0
+        is_first_oauth2_user = provider == SSOProvider.OAUTH2 and is_first_user
         username_base = email.split("@")[0].replace(".", "_")
         user = User(
             email=email,
             username=username_base,
             full_name=info.get("full_name") or info.get("name", ""),
             avatar_url=info.get("avatar_url") or info.get("picture"),
+            role=UserRole.ADMIN if is_first_oauth2_user else UserRole.MEMBER,
             sso_provider=provider,
             sso_subject=sso_subject,
+            is_superuser=is_first_oauth2_user,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        if is_first_oauth2_user:
+            logger.info("First OAuth2 SSO user promoted to superuser", user_id=user.id)
     return user
