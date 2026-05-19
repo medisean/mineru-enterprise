@@ -23,6 +23,9 @@ logger = structlog.get_logger(__name__)
 
 # SSO state TTL in seconds (10 minutes)
 _SSO_STATE_TTL = 600
+# SSO callback result TTL in seconds. This makes duplicate browser callback
+# posts idempotent without reusing the one-time authorization code.
+_SSO_CALLBACK_RESULT_TTL = 120
 
 
 def _get_redis():
@@ -47,6 +50,29 @@ def _consume_sso_state(state: str) -> str | None:
     # Delete after read (one-time use)
     r.delete(key)
     return provider.decode("utf-8") if isinstance(provider, bytes) else provider
+
+
+def _store_sso_callback_result(state: str, provider: str, user_id: str) -> None:
+    r = _get_redis()
+    r.setex(
+        f"sso_callback:{state}",
+        _SSO_CALLBACK_RESULT_TTL,
+        json.dumps({"provider": provider, "user_id": str(user_id)}),
+    )
+
+
+def _get_sso_callback_result(state: str) -> dict | None:
+    r = _get_redis()
+    raw = r.get(f"sso_callback:{state}")
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        value = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _make_tokens(user: User) -> TokenResponse:
@@ -194,6 +220,19 @@ async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(g
     # Validate state to prevent CSRF
     stored_provider = _consume_sso_state(payload.state)
     if stored_provider is None:
+        callback_result = _get_sso_callback_result(payload.state)
+        if callback_result and callback_result.get("provider") == payload.provider:
+            user_id = callback_result.get("user_id")
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user and user.is_active:
+                logger.info(
+                    "SSO callback duplicate returned cached user",
+                    provider=payload.provider,
+                    user_id=user.id,
+                    state_prefix=_state_prefix(payload.state),
+                )
+                return _make_tokens(user)
         logger.warning("SSO callback state invalid or expired", provider=payload.provider, state_prefix=_state_prefix(payload.state))
         raise HTTPException(status_code=400, detail="Invalid or expired SSO state. Please retry the login flow.")
     if stored_provider != payload.provider:
@@ -228,6 +267,7 @@ async def sso_callback(payload: SSOCallbackRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=401, detail="SSO authentication failed")
 
     user = await _get_or_create_sso_user(db, user_info, sso_provider)
+    _store_sso_callback_result(payload.state, payload.provider, str(user.id))
     logger.info("SSO callback completed", provider=payload.provider, user_id=user.id)
     return _make_tokens(user)
 
