@@ -57,7 +57,11 @@ class OIDCProvider:
             user_info = _userinfo_from_token_response(token)
             if user_info:
                 return user_info
-            logger.warning("OIDC token response missing access_token", token_keys=_safe_dict_keys(token))
+            logger.warning(
+                "OIDC token response missing access_token",
+                token_keys=_safe_dict_keys(token),
+                token_error=_token_error_summary(token),
+            )
             return {}
         async with httpx.AsyncClient() as client:
             userinfo = await client.get(
@@ -95,7 +99,11 @@ class OAuth2Provider:
             user_info = _userinfo_from_token_response(token)
             if user_info:
                 return self._normalize_user_info(user_info)
-            logger.warning("OAuth2 token response missing access_token", token_keys=_safe_dict_keys(token))
+            logger.warning(
+                "OAuth2 token response missing access_token",
+                token_keys=_safe_dict_keys(token),
+                token_error=_token_error_summary(token),
+            )
             return {}
 
         # Some corporate IdPs return non-standard token_type values such as
@@ -198,13 +206,32 @@ async def _fetch_authorization_code_token(
             auth=auth,
         )
         response.raise_for_status()
-        return response.json()
+        token = response.json()
+        if _token_error_summary(token):
+            logger.warning(
+                "SSO token endpoint returned error payload",
+                token_keys=_safe_dict_keys(token),
+                token_error=_token_error_summary(token),
+                token_auth_method=token_auth_method,
+            )
+        return token
 
 
 def _safe_dict_keys(value: object) -> list[str]:
     if not isinstance(value, dict):
         return []
     return sorted(str(key) for key in value.keys())
+
+
+def _token_error_summary(value: object) -> dict:
+    if not isinstance(value, dict):
+        return {}
+    summary = {}
+    for key in ("error", "error_description", "errorCode", "errorDesc", "message", "msg"):
+        error_value = value.get(key)
+        if isinstance(error_value, (str, int, float, bool)) and error_value != "":
+            summary[key] = str(error_value)[:500]
+    return summary
 
 
 def _unwrap_payload(value: dict) -> dict:

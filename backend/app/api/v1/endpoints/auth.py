@@ -58,7 +58,7 @@ def _make_tokens(user: User) -> TokenResponse:
 
 
 def _frontend_callback_uri(provider: str) -> str:
-    return f"{settings.FRONTEND_URL}/auth/callback?provider={provider}"
+    return f"{settings.FRONTEND_URL}/auth/callback"
 
 
 def _provider_enabled(provider: str) -> bool:
