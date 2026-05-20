@@ -14,6 +14,7 @@ logger = structlog.get_logger(__name__)
 
 
 TASK_FAVORITE_SCHEMA_SQL = (
+    "ALTER TABLE parse_tasks ALTER COLUMN is_ocr DROP NOT NULL",
     "ALTER TABLE parse_tasks ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false",
     "CREATE INDEX IF NOT EXISTS ix_parse_tasks_user_favorite ON parse_tasks (user_id, is_favorite)",
 )
