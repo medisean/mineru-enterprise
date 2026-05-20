@@ -150,6 +150,7 @@ class Settings(BaseSettings):
     MINERU_DEFAULT_OCR: Optional[bool] = None     # None=auto, True=force OCR, False=text-only
     MINERU_DEFAULT_ENABLE_FORMULA: bool = True
     MINERU_DEFAULT_ENABLE_TABLE: bool = True
+    MINERU_DEFAULT_IMAGE_ANALYSIS: bool = False
     MINERU_DEFAULT_PAGE_RANGES: Optional[str] = None  # e.g. "1-10" or "2,4-6"
     MINERU_SUPPORTED_LANGUAGES: List[str] = [
         "ch", "ch_server", "ch_lite", "en", "japan", "korean", "chinese_cht",

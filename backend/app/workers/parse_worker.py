@@ -182,6 +182,10 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         enable_table = config.get("enable_table", True)
         page_ranges = config.get("page_ranges")
         parse_options = config.get("parse_options") or {}
+        image_analysis = _parse_bool_option(
+            parse_options.get("image-analysis", config.get("image_analysis")),
+            settings.MINERU_DEFAULT_IMAGE_ANALYSIS,
+        )
         extra_formats = normalize_extra_formats(config.get("extra_formats"), config.get("output_format"))
         server_url = config.get("server_url") or parse_options.get("url") or parse_options.get("server-url")
         api_url = config.get("api_url") or parse_options.get("api-url")
@@ -210,6 +214,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             cmd += ["-f", _bool_cli(enable_formula)]
             cmd += ["-t", _bool_cli(enable_table)]
+            cmd += ["--image-analysis", _bool_cli(image_analysis)]
 
             start_page, end_page = _page_range_to_start_end(page_ranges)
             if start_page is not None:
@@ -226,7 +231,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             handled_options = {
                 "url", "server-url", "api-url",
                 "output-format", "device", "backend", "pages", "formats",
-                "lang", "ocr", "formula", "table",
+                "lang", "ocr", "formula", "table", "image-analysis",
             }
             for key, value in parse_options.items() if parse_options else []:
                 if key in handled_options:
@@ -321,7 +326,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                         shutil.rmtree(pdf_dir, ignore_errors=True)
                         logger.info("Office→PDF preview generated", task_id=task_id)
                 except Exception as e:
-                    logger.warning("Office→PDF conversion failed, skipping preview", task_id=task_id, error=str(e))
+                    logger.info("Office PDF preview unavailable; parse result is unaffected", task_id=task_id, error=str(e))
 
             full_zip_key = ensure_full_result_zip(storage_service, output_s3_prefix)
             if full_zip_key:
@@ -399,6 +404,21 @@ def upload_missing_images_from_zip(storage_service, zip_key: str, output_s3_pref
 def _bool_cli(value) -> str:
     """Return MinerU 3.x boolean CLI value."""
     return "true" if bool(value) else "false"
+
+
+def _parse_bool_option(value, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 
 def _page_range_to_start_end(page_ranges: str | None) -> tuple[int | None, int | None]:
@@ -492,7 +512,7 @@ def _convert_office_to_pdf(input_path: str, office_ext: str | None = None) -> st
             if result.returncode == 0:
                 break
         else:
-            logger.warning("LibreOffice conversion failed", stderr=last_stderr[:500])
+            logger.info("LibreOffice preview conversion failed", stderr=_first_log_line(last_stderr))
             return None
 
         # Find the generated PDF
@@ -500,10 +520,10 @@ def _convert_office_to_pdf(input_path: str, office_ext: str | None = None) -> st
             if fname.lower().endswith(".pdf"):
                 pdf_path = os.path.join(output_dir, fname)
                 return pdf_path
-        logger.warning("LibreOffice conversion produced no PDF", output_dir=output_dir)
+        logger.info("LibreOffice preview conversion produced no PDF", output_dir=output_dir)
         return None
     except Exception as e:
-        logger.warning("LibreOffice conversion exception", error=str(e))
+        logger.info("LibreOffice preview conversion exception", error=str(e))
         return None
     finally:
         shutil.rmtree(user_profile_dir, ignore_errors=True)
@@ -511,6 +531,11 @@ def _convert_office_to_pdf(input_path: str, office_ext: str | None = None) -> st
         shutil.rmtree(runtime_dir, ignore_errors=True)
         if pdf_path is None:
             shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def _first_log_line(value: str, limit: int = 240) -> str:
+    line = (value or "").strip().splitlines()
+    return (line[0] if line else "")[:limit]
 
 
 # ── CPU task entry point ───────────────────────────────────────────────────

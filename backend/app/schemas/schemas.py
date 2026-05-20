@@ -113,7 +113,7 @@ class CreateTaskRequest(BaseModel):
         ALLOWED_KEYS = {
             "auto-detect-direction", "lang", "ocr", "formula", "table",
             "output-format", "device", "backend", "pages", "formats",
-            "url", "server-url", "api-url",
+            "url", "server-url", "api-url", "image-analysis",
         }
         for key in v:
             # Reject keys not in whitelist
