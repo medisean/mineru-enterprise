@@ -191,6 +191,10 @@ def _result_download_filename(task: ParseTask, object_key: str) -> str:
     return _download_filename(task, ext)
 
 
+def _result_archive_folder(task: ParseTask) -> str:
+    return f"{_filename_stem(task.original_filename)}_{_download_timestamp(task)}"
+
+
 # ── Step 1: Request presigned upload URL ─────────────────────────────────────
 @router.post("/upload-url", response_model=PresignedUploadResponse)
 async def get_upload_url(
@@ -454,6 +458,53 @@ async def get_task_results(
         ))
 
     return TaskResultResponse(task_id=task_id, status=task.status.value, files=files)
+
+
+@router.get("/{task_id}/download")
+async def download_task_results_archive(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Package all result artifacts for a task as a ZIP archive and return a presigned URL."""
+    task = await db.get(ParseTask, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status != TaskStatus.SUCCESS:
+        raise HTTPException(status_code=400, detail=f"Task not completed (status: {task.status})")
+
+    objects = storage_service.list_objects(task.output_s3_prefix)
+    if not objects:
+        raise HTTPException(status_code=404, detail="No result files found")
+
+    zip_buffer = io.BytesIO()
+    archive_root = _result_archive_folder(task)
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for obj in objects:
+            original_name = obj["key"].split("/")[-1]
+            arcname = f"{archive_root}/{original_name}"
+            content = storage_service.download_bytes(obj["key"])
+            zf.writestr(arcname, content)
+
+    zip_buffer.seek(0)
+    zip_data = zip_buffer.read()
+
+    zip_filename = f"{archive_root}.zip"
+    zip_key = f"downloads/{current_user.id}/{uuid.uuid4()}/{zip_filename}"
+    storage_service.upload_bytes(zip_key, zip_data, content_type="application/zip")
+
+    download_url = storage_service.generate_download_presigned_url(
+        zip_key,
+        expires=900,
+        filename=zip_filename,
+    )
+
+    return {
+        "download_url": download_url,
+        "filename": zip_filename,
+        "zip_size": len(zip_data),
+    }
 
 
 # ── Batch download as ZIP ────────────────────────────────────────────────────

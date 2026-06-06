@@ -107,6 +107,7 @@ export const en: Record<string, string> = {
   "tasks.favoriteFailed": "Favorite update failed, please try again later",
   "tasks.possiblyStalled": "Possibly stalled",
   "tasks.deleteTitle": "Delete this task?",
+  "tasks.deleteSingleHint": "The following task will be deleted and cannot be recovered",
   "tasks.deleteSingle": 'About to delete "{label}", this action cannot be undone',
   "tasks.deleteMultiple": "About to delete {label}, this action cannot be undone",
   "tasks.confirm": "Confirm",

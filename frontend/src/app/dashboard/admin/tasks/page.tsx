@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { useT } from "@/lib/i18n/use-translation";
+import { getTaskBackendLabel } from "@/lib/task-backend";
 
 type QuickRange = "24h" | "7d" | "30d" | "all" | "";
 
@@ -306,7 +307,7 @@ export default function AdminTasksPage() {
                       <td className="px-4 py-4 text-sm text-gray-500">{task.username || "-"}</td>
                       <td className="px-4 py-4 text-sm text-gray-500">{formatFileSize(task.file_size_bytes)}</td>
                       <td className="px-4 py-4 text-sm text-gray-500">{formatDuration(task.duration_s)}</td>
-                      <td className="px-4 py-4 text-sm text-gray-500">{task.backend || "auto"}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500">{getTaskBackendLabel(task.backend, t)}</td>
                       <td className="px-4 py-4 text-sm text-gray-400 whitespace-nowrap">
                         {new Date(task.created_at).toLocaleString()}
                       </td>

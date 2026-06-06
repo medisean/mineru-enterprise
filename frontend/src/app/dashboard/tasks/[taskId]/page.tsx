@@ -23,6 +23,7 @@ import { formatDistanceToNow } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
 import { useT } from "@/lib/i18n/use-translation";
 import { useI18nStore } from "@/lib/i18n-store";
+import { getTaskBackendLabel } from "@/lib/task-backend";
 
 // Dynamic import PDF viewer to avoid SSR issues (pdfjs-dist uses browser APIs)
 const PdfViewer = dynamic(() => import("@/components/pdf-viewer"), {
@@ -120,6 +121,7 @@ export default function TaskDetailPage() {
   const [retrying, setRetrying] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [favoriting, setFavoriting] = useState(false);
+  const [downloadingResults, setDownloadingResults] = useState(false);
   const [zoom, setZoom] = useState(100);
 
   // Scroll sync refs
@@ -156,17 +158,25 @@ export default function TaskDetailPage() {
   const sourceFileUrl = sourceUrlData?.download_url;
   const previewType = sourceUrlData?.preview_type;
 
-  const handleDownloadAll = () => {
-    if (!results?.files?.length) return;
-    for (const file of results.files) {
+  const handleDownloadAll = async () => {
+    if (downloadingResults) return;
+    setDownloadingResults(true);
+    try {
+      const res = await apiClient.get(`/tasks/${taskId}/download`);
+      const { download_url, filename } = res.data;
+      if (!download_url) return;
       const a = document.createElement("a");
-      a.href = file.download_url;
-      a.download = file.filename;
+      a.href = download_url;
+      a.download = filename || "results.zip";
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || t("tasks.downloadFailed"));
+    } finally {
+      setDownloadingResults(false);
     }
   };
 
@@ -417,9 +427,10 @@ export default function TaskDetailPage() {
           {results?.files?.length > 0 && (
             <button
               onClick={handleDownloadAll}
-              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
+              disabled={downloadingResults}
+              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
             >
-              <Download className="h-3.5 w-3.5" />
+              {downloadingResults ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               {t("taskDetail.downloadResults")}
             </button>
           )}
@@ -493,7 +504,7 @@ export default function TaskDetailPage() {
                 <FileText className="h-16 w-16 text-gray-200 mb-4" />
                 <p className="text-sm text-gray-400 mb-1 truncate w-full" title={task.original_filename}>{task.original_filename}</p>
                 <p className="text-xs text-gray-300">
-                  {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB · {task.backend} · {task.language}
+                  {(task.file_size_bytes / 1024 / 1024).toFixed(1)} MB · {getTaskBackendLabel(task.backend, t)} · {task.language}
                 </p>
                 <p className="text-xs text-gray-300 mt-4">{t("taskDetail.noPreviewGeneric")}</p>
               </div>

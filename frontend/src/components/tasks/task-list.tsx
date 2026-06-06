@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useT } from "@/lib/i18n/use-translation";
+import { getTaskBackendLabel } from "@/lib/task-backend";
 
 interface Task {
   id: string;
@@ -59,6 +60,7 @@ const STATUS_FILTERS = [
   { value: "processing", labelKey: "status.processing" },
   { value: "success", labelKey: "status.success" },
   { value: "failed", labelKey: "status.failed" },
+  { value: "cancelled", labelKey: "status.cancelled" },
 ];
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
@@ -92,16 +94,6 @@ function formatFileSize(bytes: number): string {
 
 function getExt(filename: string): string {
   return filename.split(".").pop()?.toUpperCase() || "";
-}
-
-const BACKEND_LABELS: Record<string, string> = {
-  pipeline: "Pipeline",
-  vlm: "VLM",
-  "MinerU-HTML": "MinerU-HTML",
-};
-
-function getBackendLabel(backend: string): string {
-  return BACKEND_LABELS[backend] || backend;
 }
 
 function taskMatchesListFilters(task: Task, statusFilter: unknown, searchQuery: unknown): boolean {
@@ -359,17 +351,17 @@ function TaskRow({
       </td>
       {/* Model */}
       <td className="py-4 pr-5">
-        <span className="text-sm text-gray-500">{getBackendLabel(task.backend)}</span>
+        <span className="text-sm text-gray-500">{getTaskBackendLabel(task.backend, t)}</span>
       </td>
       {/* Created */}
       <td className="py-4 pr-5">
         <span className="text-sm text-gray-400 whitespace-nowrap">
-          {format(new Date(task.created_at), "MM-dd HH:mm")}
+          {format(new Date(task.created_at), "yyyy-MM-dd HH:mm")}
         </span>
       </td>
       {/* Actions */}
-      <td className="py-4 pr-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-1">
+      <td className="py-4 pr-5 w-[180px]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1 flex-wrap">
           <button
             onClick={handleFavorite}
             disabled={favoriting}
@@ -466,6 +458,9 @@ export function TaskList({
         })
         .then((r: { data: { items: Task[]; total: number } }) => r.data),
     refetchInterval: (query) => {
+      if (statusFilter === "pending" || statusFilter === "processing") {
+        return 5000;
+      }
       const items = query.state.data?.items;
       const hasActive = items?.some(
         (t: Task) => t.status === "pending" || t.status === "processing"
@@ -691,7 +686,7 @@ export function TaskList({
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colType")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colModel")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colCreated")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colActions")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 w-[180px] whitespace-nowrap">{t("tasks.colActions")}</th>
               </tr>
             </thead>
             <tbody className="px-4">
@@ -835,17 +830,27 @@ export function TaskList({
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDeleteConfirm(null)} />
-          <div className="relative bg-white rounded-xl shadow-xl px-6 py-5 max-w-sm w-full mx-4 overflow-hidden">
+          <div className="relative bg-white rounded-xl shadow-xl px-6 py-5 max-w-lg w-full mx-4 overflow-hidden">
             <div className="flex flex-col items-center text-center">
               <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center mb-3">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
               </div>
               <h3 className="text-base font-medium text-gray-900 mb-1">{t("tasks.deleteTitle")}</h3>
-              <p className="text-sm text-gray-500 truncate w-full">
-                {deleteConfirm.ids.length === 1
-                  ? t("tasks.deleteSingle", { label: deleteConfirm.label })
-                  : t("tasks.deleteMultiple", { label: deleteConfirm.label })}
-              </p>
+              {deleteConfirm.ids.length === 1 ? (
+                <div className="w-full space-y-2">
+                  <p className="text-sm text-gray-500">{t("tasks.deleteSingleHint")}</p>
+                  <div
+                    className="w-full max-h-32 overflow-y-auto rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-sm text-gray-700 break-all text-left"
+                    title={deleteConfirm.label}
+                  >
+                    {deleteConfirm.label}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 w-full break-words">
+                  {t("tasks.deleteMultiple", { label: deleteConfirm.label })}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3 mt-5">
               <button

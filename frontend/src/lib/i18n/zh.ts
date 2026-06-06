@@ -107,6 +107,7 @@ export const zh: Record<string, string> = {
   "tasks.favoriteFailed": "收藏操作失败，请稍后重试",
   "tasks.possiblyStalled": "可能卡住",
   "tasks.deleteTitle": "是否删除该任务？",
+  "tasks.deleteSingleHint": "即将删除以下任务，此操作不可恢复",
   "tasks.deleteSingle": "即将删除「{label}」，此操作不可恢复",
   "tasks.deleteMultiple": "即将删除{label}，此操作不可恢复",
   "tasks.confirm": "确定",
