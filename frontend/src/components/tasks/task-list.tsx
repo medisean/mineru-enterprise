@@ -851,15 +851,18 @@ export function TaskList({
                 <div className="w-full space-y-2">
                   <p className="text-sm text-gray-500">{t("tasks.deleteSingleHint")}</p>
                   <div
-                    className="w-full max-h-32 overflow-y-auto rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-sm text-gray-700 break-all text-left"
+                    className="flex w-full items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-left"
                     title={deleteConfirm.label}
                   >
-                    {deleteConfirm.label}
+                    <FileText className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700">
+                      {deleteConfirm.label}
+                    </span>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 w-full break-words">
-                  {t("tasks.deleteMultiple", { label: deleteConfirm.label })}
+                  {t("tasks.deleteMultiple", { count: deleteConfirm.ids.length })}
                 </p>
               )}
             </div>
