@@ -14,7 +14,7 @@ import { AppLogo } from "@/components/brand/app-logo";
 import {
   LogOut, FileText, Plus, Loader2, PanelLeftClose, PanelLeftOpen,
   CheckCircle2, XCircle, Clock, AlertCircle,
-  Shield, Users, Clock4, Star,
+  Shield, Users, Clock4, Star, KeyRound,
 } from "lucide-react";
 import { useT } from "@/lib/i18n/use-translation";
 
@@ -291,6 +291,13 @@ export default function DashboardLayout({
                 collapsed={collapsed}
                 active={pathname === "/dashboard/admin/tasks"}
                 href="/dashboard/admin/tasks"
+              />
+              <NavItem
+                icon={<KeyRound className="h-4 w-4" />}
+                label={t("sidebar.apiTokens")}
+                collapsed={collapsed}
+                active={pathname === "/dashboard/admin/api-tokens"}
+                href="/dashboard/admin/api-tokens"
               />
             </>
           )}

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -99,8 +100,18 @@ async def redispatch_stale_pending_tasks_once() -> int:
 async def watchdog_loop(stop_event: asyncio.Event) -> None:
     while not stop_event.is_set():
         try:
-            await fail_stalled_tasks_once()
-            await redispatch_stale_pending_tasks_once()
+            async with AsyncSessionLocal() as lock_db:
+                locked = await lock_db.execute(
+                    text("SELECT pg_try_advisory_lock(hashtext('mineru_task_watchdog'))")
+                )
+                if locked.scalar_one():
+                    try:
+                        await fail_stalled_tasks_once()
+                        await redispatch_stale_pending_tasks_once()
+                    finally:
+                        await lock_db.execute(
+                            text("SELECT pg_advisory_unlock(hashtext('mineru_task_watchdog'))")
+                        )
         except Exception as exc:
             logger.warning("Task watchdog scan failed", error=str(exc))
         try:

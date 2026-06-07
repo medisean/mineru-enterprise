@@ -86,6 +86,23 @@ class User(Base):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# API Token
+# ─────────────────────────────────────────────────────────────────────────────
+class ApiToken(Base):
+    __tablename__ = "api_tokens"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    suffix: Mapped[str] = mapped_column(String(8), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ParseTask
 # ─────────────────────────────────────────────────────────────────────────────
 class ParseTask(Base):
@@ -139,3 +156,4 @@ class ParseTask(Base):
 
 Index("ix_parse_tasks_user_batch", ParseTask.user_id, ParseTask.batch_id)
 Index("ix_parse_tasks_user_favorite", ParseTask.user_id, ParseTask.is_favorite)
+Index("ix_api_tokens_created_by", ApiToken.created_by_user_id)

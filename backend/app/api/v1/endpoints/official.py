@@ -289,6 +289,7 @@ async def _wait_for_task(task_id: str, db: AsyncSession, timeout_seconds: int = 
             return task
         if asyncio.get_event_loop().time() >= deadline:
             return task
+        await db.rollback()
         await asyncio.sleep(2)
 
 

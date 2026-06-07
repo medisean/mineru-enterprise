@@ -139,6 +139,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cpu"
+      MINERU_MODEL_SOURCE: "local"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
@@ -147,6 +148,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models
+      - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c ${CPU_WORKER_CONCURRENCY:-1} --loglevel=info
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────

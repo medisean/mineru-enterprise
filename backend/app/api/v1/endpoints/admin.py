@@ -8,14 +8,30 @@ from sqlalchemy import select, func, case, or_, String
 
 from app.core.database import get_db
 from app.core.deps import get_admin_user
-from app.models.models import User, Organization, ParseTask, TaskStatus
+from app.models.models import ApiToken, User, Organization, ParseTask, TaskStatus
 from app.schemas.schemas import (
     AdminStatsOut, AdminRecentUser,
     AdminUserOut, AdminUserUpdate, AdminUserListResponse,
     AdminTaskOut, AdminTaskListResponse,
+    AdminApiTokenCreate, AdminApiTokenCreateResponse, AdminApiTokenOut, AdminApiTokenUpdate,
 )
+from app.services.api_tokens import generate_api_token, hash_api_token, token_prefix, token_suffix
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _api_token_out(api_token: ApiToken, username: str | None = None) -> AdminApiTokenOut:
+    return AdminApiTokenOut(
+        id=str(api_token.id),
+        name=api_token.name,
+        prefix=api_token.prefix,
+        suffix=api_token.suffix,
+        is_active=api_token.is_active,
+        created_by_user_id=str(api_token.created_by_user_id),
+        created_by_username=username,
+        created_at=api_token.created_at,
+        last_used_at=api_token.last_used_at,
+    )
 
 
 # ── Dashboard stats ─────────────────────────────────────────────────────────
@@ -128,6 +144,89 @@ async def list_users(
         ))
 
     return AdminUserListResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+# ── API token management ────────────────────────────────────────────────────
+@router.get("/api-tokens", response_model=list[AdminApiTokenOut])
+async def list_api_tokens(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    rows = (await db.execute(
+        select(ApiToken, User.username)
+        .outerjoin(User, ApiToken.created_by_user_id == User.id)
+        .order_by(ApiToken.created_at.desc())
+    )).all()
+    return [_api_token_out(api_token, username) for api_token, username in rows]
+
+
+@router.post("/api-tokens", response_model=AdminApiTokenCreateResponse)
+async def create_api_token(
+    payload: AdminApiTokenCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    for _ in range(3):
+        token = generate_api_token()
+        token_hash = hash_api_token(token)
+        exists = (await db.execute(select(ApiToken.id).where(ApiToken.token_hash == token_hash))).scalar_one_or_none()
+        if exists:
+            continue
+
+        api_token = ApiToken(
+            name=payload.name,
+            token_hash=token_hash,
+            prefix=token_prefix(token),
+            suffix=token_suffix(token),
+            created_by_user_id=admin.id,
+            is_active=True,
+        )
+        db.add(api_token)
+        await db.commit()
+        await db.refresh(api_token)
+        return AdminApiTokenCreateResponse(
+            token=token,
+            item=_api_token_out(api_token, admin.username),
+        )
+
+    raise HTTPException(status_code=500, detail="Failed to generate API token")
+
+
+@router.patch("/api-tokens/{token_id}", response_model=AdminApiTokenOut)
+async def update_api_token(
+    token_id: str,
+    payload: AdminApiTokenUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    api_token = (await db.execute(select(ApiToken).where(ApiToken.id == token_id))).scalar_one_or_none()
+    if not api_token:
+        raise HTTPException(status_code=404, detail="API token not found")
+
+    if payload.name is not None:
+        api_token.name = payload.name
+    if payload.is_active is not None:
+        api_token.is_active = payload.is_active
+
+    await db.commit()
+    await db.refresh(api_token)
+
+    username = (await db.execute(select(User.username).where(User.id == api_token.created_by_user_id))).scalar_one_or_none()
+    return _api_token_out(api_token, username)
+
+
+@router.delete("/api-tokens/{token_id}")
+async def delete_api_token(
+    token_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+):
+    api_token = (await db.execute(select(ApiToken).where(ApiToken.id == token_id))).scalar_one_or_none()
+    if not api_token:
+        raise HTTPException(status_code=404, detail="API token not found")
+    await db.delete(api_token)
+    await db.commit()
+    return {"detail": "API token deleted"}
 
 
 @router.get("/users/{user_id}", response_model=AdminUserOut)

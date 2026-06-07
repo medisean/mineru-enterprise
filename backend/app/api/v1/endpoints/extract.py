@@ -11,7 +11,6 @@ Endpoints:
 """
 import uuid
 import mimetypes
-import hmac
 import structlog
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +34,7 @@ from app.schemas.schemas import (
 )
 from app.services.file_validation import validate_file_magic
 from app.services.official_result_exports import ensure_full_result_zip, normalize_extra_formats
+from app.services.api_tokens import authenticate_api_token
 from app.services.storage import storage_service
 from app.workers.parse_worker import dispatch_parse_task
 
@@ -77,27 +77,6 @@ class UnsupportedDownloadedFileType(ValueError):
     pass
 
 
-async def _get_or_create_precision_api_user(db: AsyncSession) -> User:
-    result = await db.execute(select(User).where(User.username == "precision_api_system"))
-    user = result.scalar_one_or_none()
-    if user:
-        return user
-
-    from app.core.security import hash_password
-    user = User(
-        email="precision-api@system.local",
-        username="precision_api_system",
-        hashed_password=hash_password(uuid.uuid4().hex),
-        full_name="Precision API System",
-        role="member",
-        is_active=True,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
-
-
 def _auth_error(code: str, msg: str, status_code: int = 401) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
@@ -111,9 +90,9 @@ async def _authorize_precision_request(request: Request, db: AsyncSession) -> tu
     if scheme.lower() != "bearer" or not token:
         return None, _auth_error("A0202", "Token error")
 
-    configured_token = settings.MINERU_API_TOKEN.strip()
-    if configured_token and hmac.compare_digest(token, configured_token):
-        return await _get_or_create_precision_api_user(db), None
+    api_token_user = await authenticate_api_token(db, token)
+    if api_token_user:
+        return api_token_user, None
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -185,6 +164,14 @@ def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
 
 def _trace_id() -> str:
     return uuid.uuid4().hex
+
+
+def _is_valid_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def _download_timestamp(task: ParseTask) -> str:
@@ -378,6 +365,9 @@ async def get_extract_task(
     if auth_error:
         return auth_error
 
+    if not _is_valid_uuid(task_id):
+        return {"code": -60012, "msg": "Task not found", "trace_id": _trace_id(), "data": None}
+
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         return {"code": -60012, "msg": "Task not found", "trace_id": _trace_id(), "data": None}
@@ -396,14 +386,16 @@ async def get_extract_task(
 # ═══════════════════════════════════════════════════════════════════════════
 @router.post("/file-urls/batch")
 async def batch_file_urls(
-    payload: BatchFileUrlsRequest,
     request: Request,
+    payload: BatchFileUrlsRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Get presigned upload URLs for batch file upload."""
     current_user, auth_error = await _authorize_precision_request(request, db)
     if auth_error:
         return auth_error
+    if payload is None:
+        return {"code": 0, "msg": "ok", "trace_id": _trace_id(), "data": {"batch_id": "", "file_urls": []}}
     callback_error = _validate_callback_seed(payload.callback, payload.seed)
     if callback_error:
         return callback_error

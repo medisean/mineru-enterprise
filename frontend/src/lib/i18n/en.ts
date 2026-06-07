@@ -173,6 +173,7 @@ export const en: Record<string, string> = {
   "sidebar.adminDashboard": "Dashboard",
   "sidebar.userMgmt": "Users",
   "sidebar.taskHistory": "Task History",
+  "sidebar.apiTokens": "API Tokens",
 
   // ── Admin ──────────────────────────────────────────────────────────
   "admin.dashboard": "Admin Dashboard",
@@ -223,6 +224,25 @@ export const en: Record<string, string> = {
   "admin.searchTasks": "Search filename, task ID, user...",
   "admin.clearSearch": "Clear search",
   "admin.noTasksMatched": "No matching task records",
+  "admin.apiTokens": "API Token Management",
+  "admin.createApiToken": "Create Token",
+  "admin.tokenName": "Name",
+  "admin.tokenNamePlaceholder": "For example: Local Dify",
+  "admin.tokenPreview": "Token",
+  "admin.tokenCreated": "Token Created",
+  "admin.tokenCreatedHint": "The token is only shown once. Copy it into Dify now.",
+  "admin.copy": "Copy",
+  "admin.copied": "Copied",
+  "admin.createdBy": "Created By",
+  "admin.lastUsed": "Last Used",
+  "admin.neverUsed": "Never used",
+  "admin.noApiTokens": "No API tokens",
+  "admin.disable": "Disable",
+  "admin.enable": "Enable",
+  "admin.deleteApiToken": "Delete Token",
+  "admin.deleteApiTokenConfirm": "Delete API token \"{name}\"? External calls using this token will fail immediately.",
+  "admin.difyBaseUrl": "Dify container base URL",
+  "admin.authHeader": "Auth Header",
 
   // ── Roles ──────────────────────────────────────────────────────────
   "role.superAdmin": "Super Admin",

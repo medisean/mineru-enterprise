@@ -86,11 +86,17 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
     run_attempt = int(config.get("run_attempt") or 0)
     tmp_path = None
 
+    def is_terminal_status(status) -> bool:
+        from app.models.models import TaskStatus
+        return status in {TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED}
+
     def update_task_status(status, progress=None, error=None, output_prefix=None):
         with Session() as session:
             from app.models.models import ParseTask, TaskStatus
             task = session.get(ParseTask, task_id)
             if task and task.run_attempt == run_attempt:
+                if status == "processing" and is_terminal_status(task.status):
+                    return False
                 task.status = TaskStatus(status)
                 if progress is not None:
                     task.progress = progress
@@ -127,6 +133,14 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                         )
                     except Exception as e:
                         logger.warning("Failed to dispatch webhook", task_id=task_id, error=str(e))
+                return True
+            return False
+
+    def task_can_run():
+        with Session() as session:
+            from app.models.models import ParseTask
+            task = session.get(ParseTask, task_id)
+            return bool(task and task.run_attempt == run_attempt and not is_terminal_status(task.status))
 
     def heartbeat(progress=None):
         with Session() as session:
@@ -134,7 +148,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             task = session.get(ParseTask, task_id)
             if not task or task.run_attempt != run_attempt:
                 return False
-            if task.status == TaskStatus.CANCELLED:
+            if is_terminal_status(task.status):
                 return False
             if task.status != TaskStatus.PROCESSING:
                 task.status = TaskStatus.PROCESSING
@@ -155,7 +169,10 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 pass
 
     try:
-        update_task_status("processing", progress=5)
+        if not task_can_run():
+            return {"status": "cancelled", "output_prefix": output_s3_prefix, "files": []}
+        if not update_task_status("processing", progress=5):
+            return {"status": "cancelled", "output_prefix": output_s3_prefix, "files": []}
         self.update_state(state="PROGRESS", meta={"progress": 5, "message": "Downloading file"})
 
         from app.services.storage import storage_service
@@ -255,23 +272,38 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            previous_signal_handlers = {}
+
+            def handle_parse_signal(signum, _frame):
+                terminate_process(process)
+                raise RuntimeError(f"Parse task terminated by signal {signum}")
+
+            for signum in (signal.SIGTERM, signal.SIGINT):
+                previous_signal_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, handle_parse_signal)
+
             stdout, stderr = "", ""
             started = time.monotonic()
             last_heartbeat = 0.0
-            while True:
-                if process.poll() is not None:
-                    stdout, stderr = process.communicate()
-                    break
-                now_monotonic = time.monotonic()
-                if now_monotonic - started > 3000:
-                    terminate_process(process)
-                    raise TimeoutError("MinerU parsing timed out")
-                if now_monotonic - last_heartbeat >= settings.TASK_HEARTBEAT_INTERVAL_SECONDS:
-                    if not heartbeat(progress=30):
+            parse_timeout_seconds = max(int(settings.MINERU_PARSE_TIMEOUT_SECONDS), 30)
+            try:
+                while True:
+                    if process.poll() is not None:
+                        stdout, stderr = process.communicate()
+                        break
+                    now_monotonic = time.monotonic()
+                    if now_monotonic - started > parse_timeout_seconds:
                         terminate_process(process)
-                        raise RuntimeError("Parse task was stopped or superseded")
-                    last_heartbeat = now_monotonic
-                time.sleep(1)
+                        raise TimeoutError(f"MinerU parsing timed out after {parse_timeout_seconds} seconds")
+                    if now_monotonic - last_heartbeat >= settings.TASK_HEARTBEAT_INTERVAL_SECONDS:
+                        if not heartbeat(progress=30):
+                            terminate_process(process)
+                            raise RuntimeError("Parse task was stopped or superseded")
+                        last_heartbeat = now_monotonic
+                    time.sleep(1)
+            finally:
+                for signum, previous_handler in previous_signal_handlers.items():
+                    signal.signal(signum, previous_handler)
 
             # Log MinerU output for debugging (especially image parsing issues)
             if stdout:
@@ -345,13 +377,13 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         logger.error("Parse task failed", task_id=task_id, error=str(exc))
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
-        update_task_status("failed", error=str(exc))
         with Session() as session:
             from app.models.models import ParseTask, TaskStatus
             task = session.get(ParseTask, task_id)
-            if not task or task.run_attempt != run_attempt or task.status == TaskStatus.CANCELLED:
+            if not task or task.run_attempt != run_attempt or is_terminal_status(task.status):
                 return {"status": "cancelled", "output_prefix": output_s3_prefix, "files": []}
-        raise self.retry(exc=exc, countdown=30) if self.request.retries < self.max_retries else exc
+        update_task_status("failed", error=str(exc))
+        raise exc
 
 
 def _guess_content_type(filename: str) -> str:
@@ -542,7 +574,7 @@ def _first_log_line(value: str, limit: int = 240) -> str:
 @celery_app.task(
     bind=True,
     name="app.workers.parse_worker.parse_document_cpu",
-    max_retries=2,
+    max_retries=0,
     soft_time_limit=3600,
 )
 def parse_document_cpu(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
@@ -555,7 +587,7 @@ def parse_document_cpu(self, task_id: str, input_s3_key: str, output_s3_prefix: 
 @celery_app.task(
     bind=True,
     name="app.workers.parse_worker.parse_document_gpu",
-    max_retries=2,
+    max_retries=0,
     soft_time_limit=3600,
 )
 def parse_document_gpu(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):

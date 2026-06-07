@@ -72,3 +72,9 @@ app.include_router(agent_router)     # /api/v1/agent/...
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/docs")
+async def dify_mineru_plugin_docs_probe():
+    """Compatibility probe for the Dify MinerU plugin local deployment mode."""
+    return {"status": "ok", "docs_url": "/api/docs"}

@@ -480,3 +480,53 @@ class AdminTaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class AdminApiTokenOut(BaseModel):
+    id: str
+    name: str
+    prefix: str
+    suffix: str
+    is_active: bool
+    created_by_user_id: str
+    created_by_username: Optional[str] = None
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApiTokenCreate(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        name = v.strip()
+        if not name:
+            raise ValueError("Name is required")
+        if len(name) > 128:
+            raise ValueError("Name must be 128 characters or fewer")
+        return name
+
+
+class AdminApiTokenCreateResponse(BaseModel):
+    token: str
+    item: AdminApiTokenOut
+
+
+class AdminApiTokenUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_update_name(cls, v):
+        if v is None:
+            return v
+        name = v.strip()
+        if not name:
+            raise ValueError("Name is required")
+        if len(name) > 128:
+            raise ValueError("Name must be 128 characters or fewer")
+        return name

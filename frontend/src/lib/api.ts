@@ -116,4 +116,9 @@ export const adminApi = {
   deleteUser: (userId: string) => apiClient.delete(`/admin/users/${userId}`),
   listTasks: (params?: { page?: number; page_size?: number; status?: string; user_id?: string; search?: string; date_from?: string; date_to?: string }) =>
     apiClient.get("/admin/tasks", { params }),
+  listApiTokens: () => apiClient.get("/admin/api-tokens"),
+  createApiToken: (data: { name: string }) => apiClient.post("/admin/api-tokens", data),
+  updateApiToken: (tokenId: string, data: { name?: string; is_active?: boolean }) =>
+    apiClient.patch(`/admin/api-tokens/${tokenId}`, data),
+  deleteApiToken: (tokenId: string) => apiClient.delete(`/admin/api-tokens/${tokenId}`),
 };

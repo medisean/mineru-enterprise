@@ -173,6 +173,7 @@ export const zh: Record<string, string> = {
   "sidebar.adminDashboard": "管理仪表盘",
   "sidebar.userMgmt": "用户管理",
   "sidebar.taskHistory": "任务记录",
+  "sidebar.apiTokens": "API Token",
 
   // ── Admin ──────────────────────────────────────────────────────────
   "admin.dashboard": "管理仪表盘",
@@ -223,6 +224,25 @@ export const zh: Record<string, string> = {
   "admin.searchTasks": "搜索文件名、任务 ID、用户...",
   "admin.clearSearch": "清空搜索",
   "admin.noTasksMatched": "没有匹配的任务记录",
+  "admin.apiTokens": "API Token 管理",
+  "admin.createApiToken": "新建 Token",
+  "admin.tokenName": "名称",
+  "admin.tokenNamePlaceholder": "例如：Dify 本地调用",
+  "admin.tokenPreview": "Token",
+  "admin.tokenCreated": "Token 已创建",
+  "admin.tokenCreatedHint": "明文 Token 只显示一次，请立即复制并保存到 Dify。",
+  "admin.copy": "复制",
+  "admin.copied": "已复制",
+  "admin.createdBy": "创建人",
+  "admin.lastUsed": "最后使用",
+  "admin.neverUsed": "未使用",
+  "admin.noApiTokens": "暂无 API Token",
+  "admin.disable": "停用",
+  "admin.enable": "启用",
+  "admin.deleteApiToken": "删除 Token",
+  "admin.deleteApiTokenConfirm": "确定要删除 API Token「{name}」吗？删除后使用该 token 的外部调用会立即失败。",
+  "admin.difyBaseUrl": "Dify 容器访问地址",
+  "admin.authHeader": "鉴权 Header",
 
   // ── Roles ──────────────────────────────────────────────────────────
   "role.superAdmin": "超级管理员",
