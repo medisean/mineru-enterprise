@@ -295,6 +295,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
               placeholder={t("upload.pageRangesPlaceholder")}
               className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 placeholder:text-gray-300"
             />
+            <p className="mt-1 text-[11px] text-gray-400">{t("upload.pageRangesHint")}</p>
           </div>
         </div>
       )}
