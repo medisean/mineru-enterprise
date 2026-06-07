@@ -59,14 +59,14 @@ const ACCEPT_TYPES: Record<string, string[]> = {
 const MAX_FILES = 100;
 const MAX_FILE_SIZE_MB = 50;
 const MAX_FILE_PAGES = 300;
+const DEFAULT_PARSE_BACKEND = "vlm-auto-engine";
 
 export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const t = useT();
 
-  // Parse config — backend defaults to empty (MinerU v3 uses hybrid-auto-engine by default)
-  const [backend, setBackend] = useState("");
+  const [backend, setBackend] = useState(DEFAULT_PARSE_BACKEND);
   const [language, setLanguage] = useState("");  // empty = auto (MinerU defaults to 'ch')
   const [isOcr, setIsOcr] = useState<boolean | null>(null); // null = auto
   const [enableFormula, setEnableFormula] = useState(true);
@@ -127,7 +127,7 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
         s3_key,
         original_filename: item.file.name,
         file_size_bytes: item.file.size,
-        backend: backend || undefined,
+        backend,
         output_format: "markdown",
         language: language || undefined,
         is_ocr: isOcr,
@@ -210,7 +210,6 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
             onChange={(e) => setBackend(e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
           >
-            <option value="">{t("upload.engineAuto")}</option>
             <option value="pipeline">{t("upload.enginePipeline")}</option>
             <option value="hybrid-auto-engine">{t("upload.engineHybrid")}</option>
             <option value="vlm-auto-engine">{t("upload.engineVlm")}</option>

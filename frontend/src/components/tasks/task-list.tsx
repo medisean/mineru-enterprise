@@ -306,7 +306,7 @@ function TaskRow({
         </div>
       </td>
       {/* Name + size */}
-      <td className="py-4 pr-5 max-w-md">
+      <td className="py-4 pr-5 min-w-0 overflow-hidden">
         <div className="flex items-center gap-3 min-w-0">
           <FileIcon className={`h-5 w-5 flex-shrink-0 ${iconColor}`} />
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -316,7 +316,7 @@ function TaskRow({
         </div>
       </td>
       {/* Status */}
-      <td className="py-4 pr-5">
+      <td className="py-4 pr-5 whitespace-nowrap">
         <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
           <span className={statusCfg.color}>{statusCfg.icon}</span>
           {t(statusCfg.labelKey)}
@@ -346,12 +346,14 @@ function TaskRow({
         )}
       </td>
       {/* Type */}
-      <td className="py-4 pr-5">
+      <td className="py-4 pr-5 whitespace-nowrap">
         <span className="text-sm text-gray-500">{getExt(task.original_filename)}</span>
       </td>
       {/* Model */}
-      <td className="py-4 pr-5">
-        <span className="text-sm text-gray-500">{getTaskBackendLabel(task.backend, t)}</span>
+      <td className="py-4 pr-5 overflow-hidden">
+        <span className="block truncate text-sm text-gray-500" title={getTaskBackendLabel(task.backend, t)}>
+          {getTaskBackendLabel(task.backend, t)}
+        </span>
       </td>
       {/* Created */}
       <td className="py-4 pr-5">
@@ -361,7 +363,7 @@ function TaskRow({
       </td>
       {/* Actions */}
       <td className="py-4 pr-5 w-[180px]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-1 flex-wrap">
+        <div className="flex items-center gap-1 whitespace-nowrap">
           <button
             onClick={handleFavorite}
             disabled={favoriting}
@@ -664,8 +666,17 @@ export function TaskList({
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+          <table className="w-full min-w-[960px] table-fixed">
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="w-[110px]" />
+              <col className="w-20" />
+              <col className="w-[150px]" />
+              <col className="w-[150px]" />
+              <col className="w-[180px]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left py-3 pl-5 pr-3 w-10">
@@ -681,11 +692,11 @@ export function TaskList({
                     />
                   </div>
                 </th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 max-w-md">{t("tasks.colName")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colStatus")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colType")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colModel")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colCreated")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colName")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colStatus")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colType")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colModel")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colCreated")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 w-[180px] whitespace-nowrap">{t("tasks.colActions")}</th>
               </tr>
             </thead>
