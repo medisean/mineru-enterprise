@@ -173,6 +173,7 @@ services:
       HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
       GPU_WORKER_DEVICES: "${GPU_WORKER_DEVICES:-}"
+      GPU_WORKER_CONCURRENCY: "${GPU_WORKER_CONCURRENCY:-1}"
     depends_on:
       postgres:
         condition: service_healthy

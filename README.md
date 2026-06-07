@@ -119,9 +119,10 @@ GPU 模式会同时启动 CPU Worker 和 GPU Worker，共享同一个任务队�
 MINERU_DEVICE=cpu           # cpu | cuda | mps（默认 cpu，GPU 模式自动设为 cuda）
 NVIDIA_VISIBLE_DEVICES=all  # 指定可见 GPU，如 "0" 或 "0,1"
 GPU_WORKER_DEVICES=         # 可选：指定 GPU worker 使用哪些卡，如 "0,1"；为空则使用所有可见卡
+GPU_WORKER_CONCURRENCY=1    # 每张 GPU 的 Celery 并发数，默认 1
 ```
 
-GPU worker 启动时会按 GPU 卡号启动多个 Celery worker：每张卡 1 个 worker，每个 worker 并发固定为 1。
+GPU worker 启动时会按 GPU 卡号启动多个 Celery worker：每张卡 1 个 worker，每个 worker 的并发由 `GPU_WORKER_CONCURRENCY` 控制。
 
 > 本地开发默认使用 CPU 模式，无需 GPU 驱动。
 

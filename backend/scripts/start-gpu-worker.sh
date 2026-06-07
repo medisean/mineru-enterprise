@@ -2,6 +2,14 @@
 set -eu
 
 loglevel="${CELERY_LOGLEVEL:-info}"
+concurrency="${GPU_WORKER_CONCURRENCY:-1}"
+
+case "$concurrency" in
+  ''|*[!0-9]*|0)
+    echo "GPU_WORKER_CONCURRENCY must be a positive integer, got: ${concurrency}" >&2
+    exit 1
+    ;;
+esac
 
 gpu_ids_from_var() {
   value="$1"
@@ -26,12 +34,12 @@ detect_gpu_ids() {
 
 start_worker_for_gpu() {
   gpu_id="$1"
-  echo "Starting GPU worker for GPU ${gpu_id} with concurrency=1"
+  echo "Starting GPU worker for GPU ${gpu_id} with concurrency=${concurrency}"
   CUDA_VISIBLE_DEVICES="$gpu_id" celery \
     -A app.workers.parse_worker.celery_app \
     worker \
     -Q parse_gpu \
-    -c 1 \
+    -c "$concurrency" \
     -n "gpu-${gpu_id}@%h" \
     --loglevel="$loglevel" &
 }
