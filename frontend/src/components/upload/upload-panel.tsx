@@ -211,7 +211,6 @@ export function UploadPanel({ onTaskCreated }: UploadPanelProps) {
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2"
           >
             <option value="pipeline">{t("upload.enginePipeline")}</option>
-            <option value="hybrid-auto-engine">{t("upload.engineHybrid")}</option>
             <option value="vlm-auto-engine">{t("upload.engineVlm")}</option>
           </select>
         </div>
