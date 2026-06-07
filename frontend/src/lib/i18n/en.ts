@@ -30,7 +30,7 @@ export const en: Record<string, string> = {
   "login.submitRegister": "Sign Up & Sign In",
   "login.orSSO": "Or sign in with corporate account",
   "login.ssoOidc": "Corporate SSO",
-  "login.ssoOAuth2": "Huawei IDaaS Sign In",
+  "login.ssoOAuth2": "IDaaS Sign In",
   "login.ssoWechatWork": "WeCom Sign In",
   "login.ssoDingtalk": "DingTalk Sign In",
   "login.networkError": "Network connection failed, please check if the backend service is running",

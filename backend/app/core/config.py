@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     OIDC_CLIENT_SECRET: str = ""
     OIDC_SCOPE: str = "openid email profile"
 
-    # ── SSO — Generic OAuth2 (Huawei IDaaS / custom IdP) ─────────────────
+    # ── SSO — Generic OAuth2 (IDaaS / custom IdP) ────────────────────────
     OAUTH2_ENABLED: bool = False
     OAUTH2_AUTHORIZATION_URL: str = ""
     OAUTH2_TOKEN_URL: str = ""

@@ -39,7 +39,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, accessToken, logout, hasHydrated } = useAuthStore();
+  const { user, accessToken, logout, fetchMe, hasHydrated } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
@@ -177,6 +177,15 @@ export default function DashboardLayout({
       router.replace("/login");
     }
   }, [hasHydrated, accessToken, router]);
+
+  useEffect(() => {
+    if (!hasHydrated || !accessToken) return;
+
+    fetchMe().catch(() => {
+      logout();
+      router.replace("/login");
+    });
+  }, [hasHydrated, accessToken, fetchMe, logout, router]);
 
   // ── Conditional return AFTER all hooks ──
 

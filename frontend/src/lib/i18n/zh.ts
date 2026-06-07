@@ -30,7 +30,7 @@ export const zh: Record<string, string> = {
   "login.submitRegister": "注册并登录",
   "login.orSSO": "或使用企业账号登录",
   "login.ssoOidc": "企业 SSO 登录",
-  "login.ssoOAuth2": "华为 IDaaS 登录",
+  "login.ssoOAuth2": "IDaaS 登录",
   "login.ssoWechatWork": "企业微信登录",
   "login.ssoDingtalk": "钉钉登录",
   "login.networkError": "网络连接失败，请检查后端服务是否启动",

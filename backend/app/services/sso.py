@@ -78,7 +78,7 @@ class OIDCProvider:
 
 
 class OAuth2Provider:
-    """Generic OAuth2 provider for Huawei IDaaS and similar corporate IdPs."""
+    """Generic OAuth2 provider for IDaaS and similar corporate IdPs."""
 
     def __init__(self):
         self.authorization_url = settings.OAUTH2_AUTHORIZATION_URL
