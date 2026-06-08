@@ -316,9 +316,9 @@ function TaskRow({
         </div>
       </td>
       {/* Status */}
-      <td className="py-4 pr-5 whitespace-nowrap">
-        <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
-          <span className={statusCfg.color}>{statusCfg.icon}</span>
+      <td className="py-4 pr-5 min-w-[120px] whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap">
+          <span className={`${statusCfg.color} flex-shrink-0`}>{statusCfg.icon}</span>
           {t(statusCfg.labelKey)}
         </span>
         {task.status === "processing" && (
@@ -693,7 +693,7 @@ export function TaskList({
                   </div>
                 </th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5">{t("tasks.colName")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colStatus")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 min-w-[120px] whitespace-nowrap">{t("tasks.colStatus")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colType")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colModel")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 py-3 pr-5 whitespace-nowrap">{t("tasks.colCreated")}</th>

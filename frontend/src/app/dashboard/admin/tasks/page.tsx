@@ -258,7 +258,7 @@ export default function AdminTasksPage() {
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">{t("admin.taskName")}</th>
-                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">{t("admin.status")}</th>
+                <th className="text-left text-xs font-medium text-gray-500 px-4 py-3 min-w-[120px] whitespace-nowrap">{t("admin.status")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">{t("admin.username")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">{t("admin.fileSize")}</th>
                 <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">{t("admin.duration")}</th>
@@ -298,9 +298,9 @@ export default function AdminTasksPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
-                        <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
-                          <span className={cfg.color}>{cfg.icon}</span>
+                      <td className="px-4 py-4 min-w-[120px] whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap">
+                          <span className={`${cfg.color} flex-shrink-0`}>{cfg.icon}</span>
                           {t(`status.${task.status}`)}
                         </span>
                       </td>
