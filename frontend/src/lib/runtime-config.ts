@@ -6,6 +6,7 @@ type RuntimeConfig = {
   NEXT_PUBLIC_WECHAT_WORK_ENABLED?: string;
   NEXT_PUBLIC_DINGTALK_ENABLED?: string;
   NEXT_PUBLIC_LOCAL_LOGIN_ENABLED?: string;
+  NEXT_PUBLIC_USER_INFO_VISIBLE?: string;
 };
 
 declare global {

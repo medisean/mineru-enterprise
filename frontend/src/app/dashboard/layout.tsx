@@ -50,6 +50,7 @@ export default function DashboardLayout({
   const [collapsed, setCollapsed] = useState(false);
   const [recentFallbackTick, setRecentFallbackTick] = useState(0);
   const runtimeLogoutVisible = getRuntimeEnv("NEXT_PUBLIC_LOCAL_LOGIN_ENABLED", "true") === "true";
+  const showUserInfo = getRuntimeEnv("NEXT_PUBLIC_USER_INFO_VISIBLE", "true") === "true";
 
   // ── All hooks MUST be called before any conditional return ──
 
@@ -362,49 +363,55 @@ export default function DashboardLayout({
         )}
 
         {/* Bottom: user info */}
-        <div className="border-t border-gray-100">
-          {!collapsed && (
-            <div className="p-2">
-              <div className="flex items-center gap-2.5 px-3 py-2 mb-1">
-                <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-700 flex-shrink-0">
-                  {user?.full_name?.[0] || user?.username?.[0] || "U"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{user?.full_name || user?.username}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>
-                </div>
+        {(showUserInfo || showLogout) && (
+          <div className="border-t border-gray-100">
+            {!collapsed && (
+              <div className="p-2">
+                {showUserInfo && (
+                  <div className="flex items-center gap-2.5 px-3 py-2 mb-1">
+                    <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-700 flex-shrink-0">
+                      {user?.full_name?.[0] || user?.username?.[0] || "U"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{user?.full_name || user?.username}</p>
+                      <p className="text-[10px] text-gray-400 truncate">{user?.email}</p>
+                    </div>
+                  </div>
+                )}
+                {showLogout && (
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {t("sidebar.logout")}
+                  </button>
+                )}
               </div>
-              {showLogout && (
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <LogOut className="h-4 w-4" />
-                  {t("sidebar.logout")}
-                </button>
-              )}
-            </div>
-          )}
-          {collapsed && (
-            <div className="p-2 flex flex-col items-center gap-1">
-              <div
-                className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-700 cursor-pointer"
-                title={`${user?.full_name || user?.username} · ${user?.email}`}
-              >
-                {user?.full_name?.[0] || user?.username?.[0] || "U"}
+            )}
+            {collapsed && (
+              <div className="p-2 flex flex-col items-center gap-1">
+                {showUserInfo && (
+                  <div
+                    className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-700 cursor-pointer"
+                    title={`${user?.full_name || user?.username} · ${user?.email}`}
+                  >
+                    {user?.full_name?.[0] || user?.username?.[0] || "U"}
+                  </div>
+                )}
+                {showLogout && (
+                  <button
+                    onClick={handleLogout}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors"
+                    title={t("sidebar.logout")}
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
-              {showLogout && (
-                <button
-                  onClick={handleLogout}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors"
-                  title={t("sidebar.logout")}
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </aside>
 
       {/* Main content */}
