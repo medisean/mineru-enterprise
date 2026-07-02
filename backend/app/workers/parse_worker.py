@@ -307,12 +307,12 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             # Log MinerU output for debugging (especially image parsing issues)
             if stdout:
-                logger.info("MinerU stdout", task_id=task_id, output=stdout[:3000])
+                logger.info("MinerU stdout", task_id=task_id, output=_summarize_process_output(stdout))
             if stderr:
-                logger.warning("MinerU stderr", task_id=task_id, output=stderr[:3000])
+                logger.warning("MinerU stderr", task_id=task_id, output=_summarize_process_output(stderr))
 
             if process.returncode != 0:
-                raise RuntimeError(f"MinerU error (exit {process.returncode}): {stderr[:2000]}")
+                raise RuntimeError(f"MinerU error (exit {process.returncode}): {_summarize_process_output(stderr, head=2400, tail=3600)}")
 
             update_task_status("processing", progress=80)
             self.update_state(state="PROGRESS", meta={"progress": 80, "message": "Uploading results"})
@@ -436,6 +436,16 @@ def upload_missing_images_from_zip(storage_service, zip_key: str, output_s3_pref
 def _bool_cli(value) -> str:
     """Return MinerU 3.x boolean CLI value."""
     return "true" if bool(value) else "false"
+
+
+def _summarize_process_output(value: str, head: int = 3000, tail: int = 5000) -> str:
+    """Keep both ends of long subprocess logs so traceback root causes survive."""
+    text = value or ""
+    limit = head + tail
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    return f"{text[:head]}\n... <omitted {omitted} chars> ...\n{text[-tail:]}"
 
 
 def _parse_bool_option(value, default: bool) -> bool:

@@ -71,6 +71,11 @@ CONTENT_TYPE_BY_EXTENSION = {
 class UnsupportedDownloadedFileType(ValueError):
     pass
 
+
+def _default_backend() -> str:
+    return settings.MINERU_API_DEFAULT_BACKEND
+
+
 # Simple in-memory rate limiter (per-IP)
 _rate_limit_store: dict[str, list[float]] = {}
 RATE_LIMIT_WINDOW = 60  # seconds
@@ -223,12 +228,13 @@ async def agent_parse_url(
         return {"code": -60008, "msg": "Failed to download file from URL", "trace_id": _trace_id(), "data": None}
 
     # Agent API only outputs markdown
+    backend = _default_backend()
     task = ParseTask(
         original_filename=filename,
         file_size_bytes=size,
         input_s3_key=s3_key,
         output_s3_prefix=f"results/{user_id}/{uuid.uuid4()}",
-        backend="pipeline",
+        backend=backend,
         output_format="markdown",
         language=payload.language or "ch",
         is_ocr=payload.is_ocr,
@@ -242,7 +248,7 @@ async def agent_parse_url(
     await db.refresh(task)
 
     config = {
-        "backend": "pipeline",
+        "backend": backend,
         "output_format": "markdown",
         "language": payload.language or "ch",
         "is_ocr": payload.is_ocr,
@@ -289,12 +295,13 @@ async def agent_parse_file(
     file_url = storage_service.generate_upload_presigned_url(s3_key, None)
 
     # Create task in DB
+    backend = _default_backend()
     task = ParseTask(
         original_filename=payload.file_name,
         file_size_bytes=0,
         input_s3_key=s3_key,
         output_s3_prefix=f"results/{user_id}/{uuid.uuid4()}",
-        backend="pipeline",
+        backend=backend,
         output_format="markdown",
         language=payload.language or "ch",
         is_ocr=payload.is_ocr,
@@ -309,7 +316,7 @@ async def agent_parse_file(
 
     # Auto-dispatch Celery task (file may not be uploaded yet, but worker will retry)
     config = {
-        "backend": "pipeline",
+        "backend": backend,
         "output_format": "markdown",
         "language": payload.language or "ch",
         "is_ocr": payload.is_ocr,

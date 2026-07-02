@@ -92,7 +92,7 @@ class CreateTaskRequest(BaseModel):
     s3_key: str
     original_filename: str
     file_size_bytes: int
-    backend: Optional[str] = ""    # pipeline | hybrid-auto-engine | vlm-auto-engine | empty=MinerU default
+    backend: Optional[str] = ""    # pipeline | vlm-auto-engine | empty=API default
     output_format: Optional[str] = "markdown"   # markdown | json | both | docx | html | latex
     language: Optional[str] = ""          # empty=auto-detect | ch | en | japan | korean | ...
     is_ocr: Optional[bool] = None          # None = auto-detect
@@ -220,7 +220,7 @@ class MinerUResponse(BaseModel):
 class ExtractTaskRequest(BaseModel):
     """POST /api/v4/extract/task — create parse task by file URL"""
     url: str
-    model_version: Optional[str] = ""       # pipeline | hybrid-auto-engine | vlm-auto-engine | empty=default
+    model_version: Optional[str] = ""       # pipeline | vlm | vlm-auto-engine | empty=API default
     is_ocr: Optional[bool] = False
     enable_formula: Optional[bool] = True
     enable_table: Optional[bool] = True

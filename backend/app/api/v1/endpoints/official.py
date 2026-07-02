@@ -50,6 +50,17 @@ CONTENT_TYPE_BY_EXTENSION = {
 }
 
 
+def _normalize_backend(backend: str | None) -> str:
+    value = (backend or "").strip()
+    if not value:
+        return settings.MINERU_API_DEFAULT_BACKEND
+    if value == "vlm":
+        return "vlm-auto-engine"
+    if value == "hybrid":
+        return "hybrid-auto-engine"
+    return value
+
+
 async def _get_or_create_official_user(db: AsyncSession) -> User:
     result = await db.execute(select(User).where(User.username == "official_api_system"))
     user = result.scalar_one_or_none()
@@ -114,7 +125,7 @@ def _status_payload(task: ParseTask, request: Request) -> dict:
     return {
         "task_id": task.id,
         "status": _task_status(task),
-        "backend": task.backend or settings.MINERU_BACKEND or "hybrid-auto-engine",
+        "backend": task.backend or settings.MINERU_API_DEFAULT_BACKEND,
         "file_names": [Path(task.original_filename).stem],
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "started_at": task.started_at.isoformat() if task.started_at else None,
@@ -316,6 +327,7 @@ async def _submit_tasks(
         raise HTTPException(status_code=400, detail="No files uploaded")
     user = await _get_or_create_official_user(db)
     lang = lang_list[0] if lang_list else "ch"
+    backend = _normalize_backend(backend)
     tasks = []
     for upload in files:
         tasks.append(await _save_upload_as_task(
@@ -344,7 +356,7 @@ async def official_submit_task(
     request: Request,
     files: Annotated[list[UploadFile], File(description="Upload PDF, image, DOCX, PPTX, or XLSX files for parsing")],
     lang_list: Annotated[list[str], Form()] = ["ch"],
-    backend: Annotated[str, Form()] = "hybrid-auto-engine",
+    backend: Annotated[str, Form()] = "",
     parse_method: Annotated[str, Form()] = "auto",
     formula_enable: Annotated[bool, Form()] = True,
     table_enable: Annotated[bool, Form()] = True,
@@ -444,7 +456,7 @@ async def official_file_parse(
     request: Request,
     files: Annotated[list[UploadFile], File(description="Upload PDF, image, DOCX, PPTX, or XLSX files for parsing")],
     lang_list: Annotated[list[str], Form()] = ["ch"],
-    backend: Annotated[str, Form()] = "hybrid-auto-engine",
+    backend: Annotated[str, Form()] = "",
     parse_method: Annotated[str, Form()] = "auto",
     formula_enable: Annotated[bool, Form()] = True,
     table_enable: Annotated[bool, Form()] = True,

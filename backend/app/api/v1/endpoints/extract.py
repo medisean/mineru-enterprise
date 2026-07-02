@@ -188,6 +188,8 @@ def _download_filename(task: ParseTask, extension: str) -> str:
 
 def _map_model_version(model_version: str | None) -> str:
     backend = (model_version or "").strip()
+    if not backend:
+        return settings.MINERU_API_DEFAULT_BACKEND
     if backend == "vlm":
         return "vlm-auto-engine"
     if backend == "hybrid":

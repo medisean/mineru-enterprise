@@ -70,6 +70,7 @@ class Settings(BaseSettings):
 
     # ── MinerU Engine ─────────────────────────────────────────────────────
     MINERU_BACKEND: str = ""                  # empty = MinerU default (hybrid-auto-engine in v3)
+    MINERU_API_DEFAULT_BACKEND: str = "vlm-auto-engine"
     MINERU_DEVICE: str = "cpu"                 # cpu | cuda | mps
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
 
