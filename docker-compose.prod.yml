@@ -6,7 +6,7 @@
 # What this does:
 #   1. Forces ALL parse tasks to the GPU queue (FORCE_GPU_QUEUE=true)
 #   2. Keeps the CPU worker behind the optional "cpu" profile
-#   3. Enables only the GPU worker via --profile gpu
+#   3. Enables the persistent MinerU API and GPU worker via --profile gpu
 #   4. Starts Nginx reverse proxy with the same gpu profile
 
 services:
@@ -20,6 +20,10 @@ services:
 
   worker-gpu:
     # Enabled in production by passing --profile gpu.
+    profiles: ["gpu"]
+
+  mineru-api-gpu:
+    # Keeps MinerU loaded between parse tasks so the worker can use http-client backends.
     profiles: ["gpu"]
 
   nginx:

@@ -76,6 +76,19 @@ def _on_worker_process_init(**_kwargs):
     _ensure_worker_schema_compat("worker_process_init")
 
 
+HTTP_CLIENT_BACKENDS_BY_LOCAL_BACKEND = {
+    "pipeline": "pipeline-http-client",
+    "vlm-auto-engine": "vlm-http-client",
+    "hybrid-auto-engine": "hybrid-http-client",
+}
+
+
+def _backend_for_mineru_server(backend: str) -> str:
+    if not backend:
+        backend = settings.MINERU_API_DEFAULT_BACKEND
+    return HTTP_CLIENT_BACKENDS_BY_LOCAL_BACKEND.get(backend, backend)
+
+
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
     """Shared parsing logic used by both CPU and GPU task variants."""
     import subprocess, json, glob
@@ -191,7 +204,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         office_ext = _get_office_extension(input_s3_key)
 
         # Build MinerU CLI command with full parameter set
-        backend = config.get("backend", settings.MINERU_BACKEND)
+        backend = config.get("backend") or settings.MINERU_BACKEND
         device = config.get("device", settings.MINERU_DEVICE)
         language = config.get("language", "")
         is_ocr = config.get("is_ocr")
@@ -204,8 +217,15 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             settings.MINERU_DEFAULT_IMAGE_ANALYSIS,
         )
         extra_formats = normalize_extra_formats(config.get("extra_formats"), config.get("output_format"))
-        server_url = config.get("server_url") or parse_options.get("url") or parse_options.get("server-url")
-        api_url = config.get("api_url") or parse_options.get("api-url")
+        server_url = (
+            config.get("server_url")
+            or parse_options.get("url")
+            or parse_options.get("server-url")
+            or settings.MINERU_SERVER_URL
+        )
+        api_url = config.get("api_url") or parse_options.get("api-url") or settings.MINERU_API_URL
+        if server_url:
+            backend = _backend_for_mineru_server(str(backend or ""))
 
         with tempfile.TemporaryDirectory() as output_dir:
             cmd = [

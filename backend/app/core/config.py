@@ -69,8 +69,10 @@ class Settings(BaseSettings):
     S3_PRESIGN_EXPIRE_SECONDS: int = 3600
 
     # ── MinerU Engine ─────────────────────────────────────────────────────
-    MINERU_BACKEND: str = ""                  # empty = MinerU default (hybrid-auto-engine in v3)
+    MINERU_BACKEND: str = ""                  # empty = MinerU default
     MINERU_API_DEFAULT_BACKEND: str = "vlm-auto-engine"
+    MINERU_SERVER_URL: str = ""                # persistent mineru-api base URL for http-client backends
+    MINERU_API_URL: str = ""                   # optional MinerU API URL override passed through to CLI
     MINERU_DEVICE: str = "cpu"                 # cpu | cuda | mps
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
 

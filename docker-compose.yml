@@ -153,6 +153,40 @@ services:
       - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c ${CPU_WORKER_CONCURRENCY:-1} --loglevel=info
 
+  # ── MinerU API — persistent GPU parser service ───────────────────────────────
+  mineru-api-gpu:
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/worker-gpu:${IMAGE_TAG:-latest}
+    build: *worker-gpu-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MINERU_DEVICE: "cuda"
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
+      HF_HOME: "/opt/mineru-models/huggingface"
+      HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
+      TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
+      MINERU_MODEL_SOURCE: "local"
+      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
+      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
+    volumes:
+      - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models:ro
+      - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
+    command: python3 -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/docs >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles: ["gpu"]
+
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
   worker-gpu:
     image: ${IMAGE_REPOSITORY:-mineru-enterprise}/worker-gpu:${IMAGE_TAG:-latest}
@@ -174,10 +208,13 @@ services:
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
       GPU_WORKER_DEVICES: "${GPU_WORKER_DEVICES:-}"
       GPU_WORKER_CONCURRENCY: "${GPU_WORKER_CONCURRENCY:-1}"
+      MINERU_SERVER_URL: "${MINERU_SERVER_URL:-http://mineru-api-gpu:8000}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      mineru-api-gpu:
         condition: service_healthy
     volumes:
       - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models:ro
