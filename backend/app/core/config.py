@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     MINERU_API_DEFAULT_BACKEND: str = "pipeline"
     MINERU_SERVER_URL: str = ""                # persistent mineru-api base URL passed as CLI --api-url
     MINERU_API_URL: str = ""                   # optional MinerU API URL override passed through to CLI
+    MINERU_VLM_HTTP_CLIENT_ENABLED: bool = False
+    MINERU_VLM_SERVER_URL: str = ""             # OpenAI-compatible VLM server URL passed as CLI -u
     MINERU_DEVICE: str = "cpu"                 # cpu | cuda | mps
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
 

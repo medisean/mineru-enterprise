@@ -1,0 +1,28 @@
+# MinerU OpenAI-compatible VLM server image.
+# Uses a vLLM base image as recommended by MinerU's Docker deployment docs.
+
+ARG VLLM_BASE_IMAGE=vllm/vllm-openai:v0.21.0-cu129
+FROM ${VLLM_BASE_IMAGE}
+
+WORKDIR /app
+
+ARG PIP_INDEX_URL=
+ARG PIP_EXTRA_INDEX_URL=
+
+RUN if command -v apt-get >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+COPY requirements-vlm-server.txt ./
+RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
+    && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then python3 -m pip config set global.extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
+    && python3 -m pip install --no-cache-dir -r requirements-vlm-server.txt
+
+ENV HF_HOME=/opt/mineru-models/huggingface \
+    HUGGINGFACE_HUB_CACHE=/opt/mineru-models/huggingface/hub \
+    TRANSFORMERS_CACHE=/opt/mineru-models/huggingface/hub \
+    MINERU_MODEL_SOURCE=local \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+CMD ["mineru-openai-server", "--engine", "vllm", "--host", "0.0.0.0", "--port", "30000"]

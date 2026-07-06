@@ -33,6 +33,14 @@ x-worker-gpu-build: &worker-gpu-build
     TORCH_VERSION: ${TORCH_VERSION:-2.7.0}
     CUDA_VERSION: ${CUDA_VERSION:-cu124}
 
+x-vlm-server-build: &vlm-server-build
+  context: ./backend
+  dockerfile: Dockerfile.vlm-server.gpu
+  args:
+    VLLM_BASE_IMAGE: ${VLLM_BASE_IMAGE:-vllm/vllm-openai:v0.21.0-cu129}
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+
 x-web-build: &web-build
   context: ./frontend
   dockerfile: Dockerfile
@@ -171,7 +179,7 @@ services:
     volumes:
       - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models:ro
       - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
-    command: python3 -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000}
+    command: python3 -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000} --enable-vlm-preload ${MINERU_ENABLE_VLM_PRELOAD:-false}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/docs >/dev/null || exit 1"]
       interval: 15s
@@ -186,6 +194,48 @@ services:
               count: all
               capabilities: [gpu]
     profiles: ["gpu"]
+
+  # ── MinerU OpenAI-compatible VLM server — vLLM/lmdeploy acceleration ────────
+  mineru-vlm-server-gpu:
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/vlm-server-gpu:${IMAGE_TAG:-latest}
+    build: *vlm-server-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MINERU_DEVICE: "cuda"
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
+      CUDA_VISIBLE_DEVICES: "${MINERU_VLM_SERVER_DEVICES:-all}"
+      HF_HOME: "/opt/mineru-models/huggingface"
+      HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
+      TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
+      MINERU_MODEL_SOURCE: "local"
+      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
+      TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-1}"
+    volumes:
+      - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models:ro
+      - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
+    command: >
+      sh -lc 'exec mineru-openai-server
+      --engine "$${MINERU_VLM_SERVER_ENGINE:-vllm}"
+      --host 0.0.0.0
+      --port "$${MINERU_VLM_SERVER_PORT:-30000}"
+      $${MINERU_VLM_SERVER_ARGS:-}'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_VLM_SERVER_PORT:-30000}/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+    ports:
+      - "${MINERU_VLM_SERVER_PORT:-30000}:${MINERU_VLM_SERVER_PORT:-30000}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles: ["vlm"]
 
   # ── Celery Worker — GPU accelerated (requires nvidia-container-toolkit) ──────
   worker-gpu:
@@ -210,6 +260,8 @@ services:
       GPU_WORKER_CONCURRENCY: "${GPU_WORKER_CONCURRENCY:-1}"
       MINERU_SERVER_URL: "${MINERU_SERVER_URL:-http://mineru-api-gpu:8000}"
       MINERU_API_URL: "${MINERU_API_URL:-http://mineru-api-gpu:8000}"
+      MINERU_VLM_HTTP_CLIENT_ENABLED: "${MINERU_VLM_HTTP_CLIENT_ENABLED:-false}"
+      MINERU_VLM_SERVER_URL: "${MINERU_VLM_SERVER_URL:-}"
     depends_on:
       postgres:
         condition: service_healthy

@@ -39,7 +39,7 @@ services:
     volumes:
       - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models
       - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
-    command: python -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000}
+    command: python -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000} --enable-vlm-preload ${MINERU_ENABLE_VLM_PRELOAD:-false}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/docs >/dev/null || exit 1"]
       interval: 15s
@@ -70,6 +70,8 @@ services:
       MINERU_DEVICE: "cpu"
       MINERU_SERVER_URL: "http://mineru-api-local:${MINERU_API_PORT:-8000}"
       MINERU_API_URL: "http://mineru-api-local:${MINERU_API_PORT:-8000}"
+      MINERU_VLM_HTTP_CLIENT_ENABLED: "${MINERU_VLM_HTTP_CLIENT_ENABLED:-false}"
+      MINERU_VLM_SERVER_URL: "${MINERU_VLM_SERVER_URL:-}"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
