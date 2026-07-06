@@ -139,6 +139,7 @@ class Settings(BaseSettings):
     TASK_PENDING_STALLED_AFTER_SECONDS: int = 120
     TASK_STALLED_AFTER_SECONDS: int = 300
     TASK_WATCHDOG_INTERVAL_SECONDS: int = 60
+    TASK_MAX_PARSE_ATTEMPTS: int = 3
     MINERU_PARSE_TIMEOUT_SECONDS: int = 1200
 
     # ── File Limits ───────────────────────────────────────────────────────

@@ -17,6 +17,10 @@ from app.workers.parse_worker import dispatch_parse_task
 logger = structlog.get_logger(__name__)
 
 
+def _has_parse_attempts_remaining(task: ParseTask) -> bool:
+    return (task.run_attempt or 0) < max(settings.TASK_MAX_PARSE_ATTEMPTS - 1, 0)
+
+
 def _seconds_since(dt: datetime | None) -> float:
     if not dt:
         return 0
@@ -85,6 +89,12 @@ async def redispatch_stale_pending_tasks_once() -> int:
                 stale.append(task)
 
         for task in stale:
+            if not _has_parse_attempts_remaining(task):
+                task.status = TaskStatus.FAILED
+                task.error_message = f"连续 {settings.TASK_MAX_PARSE_ATTEMPTS} 次解析未成功，已停止自动解析"
+                task.completed_at = datetime.now(timezone.utc)
+                task.last_heartbeat_at = None
+                continue
             task.run_attempt = (task.run_attempt or 0) + 1
             task.output_s3_prefix = task.output_s3_prefix or f"results/{task.user_id}/{uuid.uuid4()}"
             task.celery_task_id = _dispatch_existing_task(task)

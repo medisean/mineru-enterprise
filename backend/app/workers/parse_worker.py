@@ -90,7 +90,7 @@ def _normalize_mineru_backend(backend: str) -> str:
 
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
     """Shared parsing logic used by both CPU and GPU task variants."""
-    import subprocess, json, glob
+    import subprocess, json, glob, threading
 
     # Use the module-level engine/session factory (connection pool is reused)
     _ensure_worker_schema_compat("parse_task_start")
@@ -293,6 +293,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                bufsize=1,
             )
             previous_signal_handlers = {}
 
@@ -304,6 +305,38 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                 previous_signal_handlers[signum] = signal.getsignal(signum)
                 signal.signal(signum, handle_parse_signal)
 
+            stdout_lines: list[str] = []
+            stderr_lines: list[str] = []
+
+            def stream_process_output(pipe, target: list[str], stream_name: str):
+                if pipe is None:
+                    return
+                try:
+                    for line in iter(pipe.readline, ""):
+                        target.append(line)
+                        text = line.rstrip()
+                        if text:
+                            log = logger.warning if stream_name == "stderr" else logger.info
+                            log("MinerU output", task_id=task_id, stream=stream_name, output=text)
+                finally:
+                    try:
+                        pipe.close()
+                    except Exception:
+                        pass
+
+            stdout_thread = threading.Thread(
+                target=stream_process_output,
+                args=(process.stdout, stdout_lines, "stdout"),
+                daemon=True,
+            )
+            stderr_thread = threading.Thread(
+                target=stream_process_output,
+                args=(process.stderr, stderr_lines, "stderr"),
+                daemon=True,
+            )
+            stdout_thread.start()
+            stderr_thread.start()
+
             stdout, stderr = "", ""
             started = time.monotonic()
             last_heartbeat = 0.0
@@ -311,7 +344,6 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             try:
                 while True:
                     if process.poll() is not None:
-                        stdout, stderr = process.communicate()
                         break
                     now_monotonic = time.monotonic()
                     if now_monotonic - started > parse_timeout_seconds:
@@ -324,6 +356,10 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                         last_heartbeat = now_monotonic
                     time.sleep(1)
             finally:
+                stdout_thread.join(timeout=5)
+                stderr_thread.join(timeout=5)
+                stdout = "".join(stdout_lines)
+                stderr = "".join(stderr_lines)
                 for signum, previous_handler in previous_signal_handlers.items():
                     signal.signal(signum, previous_handler)
 

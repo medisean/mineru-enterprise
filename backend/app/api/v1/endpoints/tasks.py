@@ -73,6 +73,10 @@ def _is_task_stalled(task: ParseTask) -> bool:
     return (now - marker).total_seconds() > settings.TASK_STALLED_AFTER_SECONDS
 
 
+def _has_parse_attempts_remaining(task: ParseTask) -> bool:
+    return (task.run_attempt or 0) < max(settings.TASK_MAX_PARSE_ATTEMPTS - 1, 0)
+
+
 def _dispatch_existing_task(task: ParseTask) -> str:
     return dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, {
         "backend": task.backend,
@@ -649,6 +653,8 @@ async def retry_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in (TaskStatus.FAILED, TaskStatus.CANCELLED) and not _is_task_stalled(task):
         raise HTTPException(status_code=400, detail="Only failed, cancelled, or stalled tasks can be retried")
+    if not _has_parse_attempts_remaining(task):
+        raise HTTPException(status_code=400, detail=f"Task has reached the maximum parse attempts ({settings.TASK_MAX_PARSE_ATTEMPTS})")
 
     if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING) and task.celery_task_id:
         try:
