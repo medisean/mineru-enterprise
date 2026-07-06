@@ -76,17 +76,16 @@ def _on_worker_process_init(**_kwargs):
     _ensure_worker_schema_compat("worker_process_init")
 
 
-HTTP_CLIENT_BACKENDS_BY_LOCAL_BACKEND = {
-    "pipeline": "pipeline-http-client",
-    "vlm-auto-engine": "vlm-http-client",
-    "hybrid-auto-engine": "hybrid-http-client",
+MINERU_BACKEND_ALIASES = {
+    "vlm-auto-engine": "vlm-engine",
+    "hybrid-auto-engine": "hybrid-engine",
 }
 
 
-def _backend_for_mineru_server(backend: str) -> str:
+def _normalize_mineru_backend(backend: str) -> str:
     if not backend:
         backend = settings.MINERU_API_DEFAULT_BACKEND
-    return HTTP_CLIENT_BACKENDS_BY_LOCAL_BACKEND.get(backend, backend)
+    return MINERU_BACKEND_ALIASES.get(backend, backend)
 
 
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
@@ -221,11 +220,14 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             config.get("server_url")
             or parse_options.get("url")
             or parse_options.get("server-url")
+        )
+        api_url = (
+            config.get("api_url")
+            or parse_options.get("api-url")
+            or settings.MINERU_API_URL
             or settings.MINERU_SERVER_URL
         )
-        api_url = config.get("api_url") or parse_options.get("api-url") or settings.MINERU_API_URL
-        if server_url:
-            backend = _backend_for_mineru_server(str(backend or ""))
+        backend = _normalize_mineru_backend(str(backend or ""))
 
         with tempfile.TemporaryDirectory() as output_dir:
             cmd = [

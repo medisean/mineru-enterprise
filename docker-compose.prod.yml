@@ -23,7 +23,7 @@ services:
     profiles: ["gpu"]
 
   mineru-api-gpu:
-    # Keeps MinerU loaded between parse tasks so the worker can use http-client backends.
+    # Keeps MinerU loaded between parse tasks; workers call it through MinerU CLI --api-url.
     profiles: ["gpu"]
 
   nginx:

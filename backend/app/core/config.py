@@ -70,8 +70,8 @@ class Settings(BaseSettings):
 
     # ── MinerU Engine ─────────────────────────────────────────────────────
     MINERU_BACKEND: str = ""                  # empty = MinerU default
-    MINERU_API_DEFAULT_BACKEND: str = "vlm-auto-engine"
-    MINERU_SERVER_URL: str = ""                # persistent mineru-api base URL for http-client backends
+    MINERU_API_DEFAULT_BACKEND: str = "pipeline"
+    MINERU_SERVER_URL: str = ""                # persistent mineru-api base URL passed as CLI --api-url
     MINERU_API_URL: str = ""                   # optional MinerU API URL override passed through to CLI
     MINERU_DEVICE: str = "cpu"                 # cpu | cuda | mps
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     TASK_PENDING_STALLED_AFTER_SECONDS: int = 120
     TASK_STALLED_AFTER_SECONDS: int = 300
     TASK_WATCHDOG_INTERVAL_SECONDS: int = 60
-    MINERU_PARSE_TIMEOUT_SECONDS: int = 600
+    MINERU_PARSE_TIMEOUT_SECONDS: int = 1200
 
     # ── File Limits ───────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 50
