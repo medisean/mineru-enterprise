@@ -58,7 +58,7 @@ const ACCEPT_TYPES: Record<string, string[]> = {
 
 const MAX_FILES = 100;
 const MAX_FILE_SIZE_MB = 50;
-const MAX_FILE_PAGES = 300;
+const MAX_FILE_PAGES = 250;
 const DEFAULT_PARSE_BACKEND = "pipeline";
 
 export function UploadPanel({ onTaskCreated }: UploadPanelProps) {

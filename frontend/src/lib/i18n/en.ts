@@ -151,6 +151,8 @@ export const en: Record<string, string> = {
   "taskDetail.noPreviewGeneric": "This file type does not support online preview",
   "taskDetail.copy": "Copy",
   "taskDetail.copied": "Copied",
+  "taskDetail.loadMore": "Load more",
+  "taskDetail.loadingMore": "Loading...",
   "taskDetail.noPreviewContent": "No preview content",
   "taskDetail.retryFailed": "Retry failed, please try again later",
   "taskDetail.stopFailed": "Stop failed, please try again later",

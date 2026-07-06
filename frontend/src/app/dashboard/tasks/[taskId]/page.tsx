@@ -5,7 +5,7 @@
  * Right: parse result (Markdown + copy).
  * Scrolling one panel proportionally scrolls the other.
  */
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,6 +65,21 @@ interface PreviewData {
   content: string;
   markdown_content: string | null;
   json_content: string | null;
+  filename?: string | null;
+  size_bytes?: number;
+  offset?: number;
+  next_offset?: number | null;
+  truncated?: boolean;
+}
+
+interface PreviewChunkData {
+  format: string;
+  filename?: string | null;
+  content: string;
+  size_bytes: number;
+  offset: number;
+  next_offset: number | null;
+  truncated: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -78,6 +93,7 @@ const STATUS_COLORS: Record<string, string> = {
 const PDF_EXTENSIONS = ["pdf"];
 const IMAGE_EXTENSIONS = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"];
 const OFFICE_EXTENSIONS = ["pptx", "docx", "xlsx"];
+const PREVIEW_CHUNK_BYTES = 256 * 1024;
 
 function isPdfFile(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -102,6 +118,13 @@ function getOfficeFileType(filename: string) {
   return "Office";
 }
 
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const router = useRouter();
@@ -122,6 +145,10 @@ export default function TaskDetailPage() {
   const [stopping, setStopping] = useState(false);
   const [favoriting, setFavoriting] = useState(false);
   const [downloadingResults, setDownloadingResults] = useState(false);
+  const [previewContent, setPreviewContent] = useState("");
+  const [previewNextOffset, setPreviewNextOffset] = useState<number | null>(null);
+  const [previewSizeBytes, setPreviewSizeBytes] = useState(0);
+  const [loadingMorePreview, setLoadingMorePreview] = useState(false);
   const [zoom, setZoom] = useState(100);
 
   // Scroll sync refs
@@ -139,9 +166,18 @@ export default function TaskDetailPage() {
 
   const { data: preview, isLoading: previewLoading } = useQuery({
     queryKey: ["task-preview", taskId],
-    queryFn: () => apiClient.get(`/tasks/${taskId}/preview`).then((r) => r.data as PreviewData),
+    queryFn: () => apiClient.get(`/tasks/${taskId}/preview`, {
+      params: { limit: PREVIEW_CHUNK_BYTES },
+    }).then((r) => r.data as PreviewData),
     enabled: task?.status === "success",
   });
+
+  useEffect(() => {
+    if (!preview) return;
+    setPreviewContent(preview.content || preview.markdown_content || preview.json_content || "");
+    setPreviewNextOffset(preview.next_offset ?? null);
+    setPreviewSizeBytes(preview.size_bytes || 0);
+  }, [preview]);
 
   const { data: results } = useQuery({
     queryKey: ["task-results", taskId],
@@ -181,11 +217,31 @@ export default function TaskDetailPage() {
   };
 
   const copyContent = async () => {
-    const text = preview?.markdown_content || preview?.content;
+    const text = previewContent || preview?.markdown_content || preview?.content;
     if (text) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const loadMorePreview = async () => {
+    if (loadingMorePreview || previewNextOffset == null) return;
+    setLoadingMorePreview(true);
+    try {
+      const res = await apiClient.get(`/tasks/${taskId}/preview/chunk`, {
+        params: {
+          offset: previewNextOffset,
+          limit: PREVIEW_CHUNK_BYTES,
+          preferred_format: preview?.format || "markdown",
+        },
+      });
+      const chunk = res.data as PreviewChunkData;
+      setPreviewContent((current) => current + chunk.content);
+      setPreviewNextOffset(chunk.next_offset);
+      setPreviewSizeBytes(chunk.size_bytes || previewSizeBytes);
+    } finally {
+      setLoadingMorePreview(false);
     }
   };
 
@@ -516,9 +572,16 @@ export default function TaskDetailPage() {
         <div className="w-1/2 flex flex-col bg-white">
           {/* Header bar */}
           <div className="flex items-center justify-between px-4 border-b border-gray-100 flex-shrink-0">
-            <span className="px-4 py-2.5 text-xs font-medium border-b-2 border-blue-500 text-blue-600">
-              Markdown
-            </span>
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="px-4 py-2.5 text-xs font-medium border-b-2 border-blue-500 text-blue-600">
+                Markdown
+              </span>
+              {previewSizeBytes > 0 && (
+                <span className="text-xs text-gray-400 truncate">
+                  {formatBytes(Math.min(previewNextOffset ?? previewSizeBytes, previewSizeBytes))} / {formatBytes(previewSizeBytes)}
+                </span>
+              )}
+            </div>
             <button
               onClick={copyContent}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded transition-colors"
@@ -538,21 +601,39 @@ export default function TaskDetailPage() {
                 <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
               </div>
             ) : (
-              <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-table:text-sm prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded">
-                {preview?.markdown_content ? (
-                  preview.format === "html" && !preview.markdown_content.includes("#") ? (
-                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview.markdown_content, { USE_PROFILES: { html: true } }) }} />
+              <>
+                <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-table:text-sm prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded">
+                  {previewContent ? (
+                    preview?.format === "html" && !previewContent.includes("#") ? (
+                      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewContent, { USE_PROFILES: { html: true } }) }} />
+                    ) : preview?.format === "json" || preview?.format === "raw" ? (
+                      <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap break-words">
+                        {previewContent}
+                      </pre>
+                    ) : (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {previewContent}
+                      </ReactMarkdown>
+                    )
                   ) : (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {preview.markdown_content}
-                    </ReactMarkdown>
-                  )
-                ) : (
-                  <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap">
-                    {preview?.content || t("taskDetail.noPreviewContent")}
-                  </pre>
+                    <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap">
+                      {t("taskDetail.noPreviewContent")}
+                    </pre>
+                  )}
+                </div>
+                {previewNextOffset != null && (
+                  <div className="sticky bottom-0 mt-6 border-t border-gray-100 bg-white/95 py-4 backdrop-blur">
+                    <button
+                      onClick={loadMorePreview}
+                      disabled={loadingMorePreview}
+                      className="mx-auto flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-60"
+                    >
+                      {loadingMorePreview && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {loadingMorePreview ? t("taskDetail.loadingMore") : t("taskDetail.loadMore")}
+                    </button>
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>

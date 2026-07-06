@@ -151,6 +151,8 @@ export const zh: Record<string, string> = {
   "taskDetail.noPreviewGeneric": "该文件类型暂不支持在线预览",
   "taskDetail.copy": "复制",
   "taskDetail.copied": "已复制",
+  "taskDetail.loadMore": "加载更多",
+  "taskDetail.loadingMore": "加载中...",
   "taskDetail.noPreviewContent": "暂无预览内容",
   "taskDetail.retryFailed": "重试失败，请稍后再试",
   "taskDetail.stopFailed": "停止失败，请稍后再试",

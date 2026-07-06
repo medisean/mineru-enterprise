@@ -209,6 +209,7 @@ services:
       GPU_WORKER_DEVICES: "${GPU_WORKER_DEVICES:-}"
       GPU_WORKER_CONCURRENCY: "${GPU_WORKER_CONCURRENCY:-1}"
       MINERU_SERVER_URL: "${MINERU_SERVER_URL:-http://mineru-api-gpu:8000}"
+      MINERU_API_URL: "${MINERU_API_URL:-http://mineru-api-gpu:8000}"
     depends_on:
       postgres:
         condition: service_healthy

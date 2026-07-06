@@ -88,6 +88,23 @@ class StorageService:
         response = self.client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"].read()
 
+    def get_object_size(self, key: str) -> int:
+        """Return object size in bytes."""
+        response = self.client.head_object(Bucket=self.bucket, Key=key)
+        return int(response.get("ContentLength") or 0)
+
+    def read_range_bytes(self, key: str, offset: int = 0, limit: int = 262144) -> bytes:
+        """Read a byte range from an object."""
+        start = max(int(offset), 0)
+        length = max(int(limit), 1)
+        end = start + length - 1
+        response = self.client.get_object(
+            Bucket=self.bucket,
+            Key=key,
+            Range=f"bytes={start}-{end}",
+        )
+        return response["Body"].read()
+
     def read_head_bytes(self, key: str, num_bytes: int = 32) -> bytes:
         """Read only the first N bytes of an object (for magic bytes validation)."""
         try:

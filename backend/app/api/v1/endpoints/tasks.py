@@ -33,6 +33,8 @@ ACTIVE_QUEUE_STATUSES = (TaskStatus.PENDING, TaskStatus.PROCESSING)
 RESULT_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 MARKDOWN_IMAGE_PATTERN = re.compile(r"(!\[[^\]]*\]\()([^)\s]+)(\))")
 HTML_IMAGE_SRC_PATTERN = re.compile(r"(<img\b[^>]*?\bsrc=[\"'])([^\"']+)([\"'][^>]*?>)", re.IGNORECASE)
+DEFAULT_PREVIEW_BYTES = 256 * 1024
+MAX_PREVIEW_BYTES = 1024 * 1024
 
 
 async def _queued_ahead(db: AsyncSession, task: ParseTask) -> Optional[int]:
@@ -153,6 +155,54 @@ def _sync_result_images_from_zip(output_s3_prefix: str, existing_keys: set[str])
     except Exception:
         return []
     return synced
+
+
+def _find_preview_object(objects: list[dict], preferred_format: str | None = None) -> tuple[dict | None, str]:
+    preferred = (preferred_format or "").lower()
+    candidates: list[tuple[str, str]] = []
+    if preferred == "json":
+        candidates.extend([("_content_list.json", "json"), ("content_list.json", "json"), (".json", "json")])
+    elif preferred == "html":
+        candidates.extend([(".html", "html"), (".md", "markdown"), ("_content_list.json", "json"), ("content_list.json", "json")])
+    else:
+        candidates.extend([(".md", "markdown"), (".html", "html"), ("_content_list.json", "json"), ("content_list.json", "json")])
+
+    for suffix, fmt in candidates:
+        for obj in objects:
+            key = obj["key"]
+            lowered = key.lower()
+            if lowered.endswith(suffix) and f"/{ZIP_EXPORT_DIR}/" not in lowered:
+                return obj, fmt
+    return (objects[0], "raw") if objects else (None, "raw")
+
+
+def _result_image_urls(output_s3_prefix: str, objects: list[dict]) -> dict[str, str]:
+    object_keys = {obj["key"] for obj in objects}
+    objects.extend(_sync_result_images_from_zip(output_s3_prefix, object_keys))
+    image_urls = {}
+    for obj in objects:
+        key = obj["key"]
+        filename = key.rsplit("/", 1)[-1]
+        ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext in RESULT_IMAGE_EXTENSIONS:
+            url = storage_service.generate_download_presigned_url(
+                key,
+                filename=filename,
+                inline_disposition=True,
+            )
+            image_urls[key] = url
+            image_urls[filename] = url
+    return image_urls
+
+
+def _decode_preview_bytes(raw: bytes, fmt: str, output_s3_prefix: str, objects: list[dict]) -> str:
+    text = raw.decode("utf-8", errors="replace")
+    if fmt in {"markdown", "html"}:
+        if fmt == "markdown":
+            from app.services.markdown_utils import convert_html_tables_to_markdown
+            text = convert_html_tables_to_markdown(text)
+        text = _rewrite_result_image_urls(text, output_s3_prefix, _result_image_urls(output_s3_prefix, objects))
+    return text
 
 
 def _guess_result_content_type(filename: str) -> str:
@@ -804,10 +854,12 @@ async def batch_create_tasks(
 @router.get("/{task_id}/preview")
 async def get_task_preview(
     task_id: str,
+    limit: int = Query(DEFAULT_PREVIEW_BYTES, ge=1, le=MAX_PREVIEW_BYTES),
+    preferred_format: Optional[str] = Query(None, pattern="^(markdown|html|json|raw)?$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return Markdown and JSON content for inline preview."""
+    """Return a bounded preview chunk so large results do not freeze the browser."""
     task = await db.get(ParseTask, task_id)
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -815,72 +867,75 @@ async def get_task_preview(
         raise HTTPException(status_code=400, detail=f"Task not completed (status: {task.status})")
 
     objects = storage_service.list_objects(task.output_s3_prefix)
-
-    markdown_content = None
-    json_content = None
-    html_content = None
-
-    for obj in objects:
-        key = obj["key"]
-        if key.endswith(".md") and markdown_content is None:
-            content = storage_service.download_bytes(key)
-            markdown_content = content.decode("utf-8", errors="replace")
-        elif key.endswith(".json") and "content_list" in key and json_content is None:
-            content = storage_service.download_bytes(key)
-            json_content = content.decode("utf-8", errors="replace")
-        elif key.endswith(".html") and html_content is None:
-            content = storage_service.download_bytes(key)
-            html_content = content.decode("utf-8", errors="replace")
-
-    # If no markdown but html exists, use html as markdown_content
-    if not markdown_content and html_content:
-        markdown_content = html_content
-
-    # Post-process: convert HTML tables to Markdown tables
-    # MinerU office backend outputs raw HTML tables in .md files;
-    # converting them makes the right panel render cleanly.
-    if markdown_content:
-        from app.services.markdown_utils import convert_html_tables_to_markdown
-        markdown_content = convert_html_tables_to_markdown(markdown_content)
-        object_keys = {obj["key"] for obj in objects}
-        objects.extend(_sync_result_images_from_zip(task.output_s3_prefix, object_keys))
-        image_urls = {}
-        for obj in objects:
-            key = obj["key"]
-            filename = key.rsplit("/", 1)[-1]
-            ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-            if ext in RESULT_IMAGE_EXTENSIONS:
-                url = storage_service.generate_download_presigned_url(
-                    key,
-                    filename=filename,
-                    inline_disposition=True,
-                )
-                image_urls[key] = url
-                image_urls[filename] = url
-        markdown_content = _rewrite_result_image_urls(markdown_content, task.output_s3_prefix, image_urls)
-
-    # Determine primary format for backwards compat
-    if markdown_content:
-        primary_format = "html" if html_content and not any(k.endswith(".md") for k in [o["key"] for o in objects]) else "markdown"
-    elif json_content:
-        primary_format = "json"
-    else:
-        primary_format = "raw"
-
-    # Fallback: return first file as raw
-    if not markdown_content and not json_content and objects:
-        content = storage_service.download_bytes(objects[0]["key"])
+    preview_obj, primary_format = _find_preview_object(objects, preferred_format)
+    if not preview_obj:
         return {
             "format": "raw",
-            "filename": objects[0]["key"].split("/")[-1],
-            "content": content.decode("utf-8", errors="replace"),
+            "filename": None,
+            "content": "",
             "markdown_content": None,
             "json_content": None,
+            "size_bytes": 0,
+            "offset": 0,
+            "next_offset": None,
+            "truncated": False,
         }
 
+    key = preview_obj["key"]
+    size = int(preview_obj.get("size") or storage_service.get_object_size(key))
+    raw = storage_service.read_range_bytes(key, 0, min(limit, size)) if size else b""
+    text = _decode_preview_bytes(raw, primary_format, task.output_s3_prefix, objects)
+    next_offset = len(raw) if len(raw) < size else None
+    markdown_content = text if primary_format in {"markdown", "html"} else None
+    json_content = text if primary_format == "json" else None
     return {
         "format": primary_format,
-        "content": markdown_content or json_content,
+        "filename": key.rsplit("/", 1)[-1],
+        "content": text,
         "markdown_content": markdown_content,
         "json_content": json_content,
+        "size_bytes": size,
+        "offset": 0,
+        "next_offset": next_offset,
+        "truncated": next_offset is not None,
+    }
+
+
+@router.get("/{task_id}/preview/chunk")
+async def get_task_preview_chunk(
+    task_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_PREVIEW_BYTES, ge=1, le=MAX_PREVIEW_BYTES),
+    preferred_format: Optional[str] = Query(None, pattern="^(markdown|html|json|raw)?$"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a bounded text chunk from the primary result file."""
+    task = await db.get(ParseTask, task_id)
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status != TaskStatus.SUCCESS:
+        raise HTTPException(status_code=400, detail=f"Task not completed (status: {task.status})")
+
+    objects = storage_service.list_objects(task.output_s3_prefix)
+    preview_obj, primary_format = _find_preview_object(objects, preferred_format)
+    if not preview_obj:
+        raise HTTPException(status_code=404, detail="Preview file not found")
+
+    key = preview_obj["key"]
+    size = int(preview_obj.get("size") or storage_service.get_object_size(key))
+    if offset >= size:
+        raw = b""
+    else:
+        raw = storage_service.read_range_bytes(key, offset, min(limit, size - offset))
+    text = _decode_preview_bytes(raw, primary_format, task.output_s3_prefix, objects)
+    next_offset = offset + len(raw) if offset + len(raw) < size else None
+    return {
+        "format": primary_format,
+        "filename": key.rsplit("/", 1)[-1],
+        "content": text,
+        "size_bytes": size,
+        "offset": offset,
+        "next_offset": next_offset,
+        "truncated": next_offset is not None,
     }

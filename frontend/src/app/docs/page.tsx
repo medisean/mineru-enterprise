@@ -240,7 +240,7 @@ export default function DocsPage() {
               ))}
             </div>
             <p className="text-xs leading-5 text-gray-400">
-              单次最多 100 个文件，单文件最大 300 页。Office 文件会先转换后解析；生产 GPU 模式建议只启用 GPU worker。
+              单次最多 100 个文件，PDF 单文件最大 250 页。Office 文件会先转换后解析；生产 GPU 模式建议只启用 GPU worker。
             </p>
           </div>
         </section>
