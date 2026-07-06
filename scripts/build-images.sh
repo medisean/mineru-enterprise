@@ -12,6 +12,7 @@ API_BASE_IMAGE="${API_BASE_IMAGE:-ubuntu:22.04}"
 PYTHON_BASE_IMAGE="${PYTHON_BASE_IMAGE:-python:3.11-slim}"
 NODE_BASE_IMAGE="${NODE_BASE_IMAGE:-node:20-alpine}"
 CUDA_BASE_IMAGE="${CUDA_BASE_IMAGE:-nvidia/cuda:12.4.1-runtime-ubuntu22.04}"
+VLLM_BASE_IMAGE="${VLLM_BASE_IMAGE:-vllm/vllm-openai:v0.21.0-cu129}"
 NGINX_BASE_IMAGE="${NGINX_BASE_IMAGE:-nginx:1.27-alpine}"
 APT_MIRROR="${APT_MIRROR:-}"
 API_UBUNTU_APT_MIRROR="${API_UBUNTU_APT_MIRROR:-}"
@@ -28,7 +29,7 @@ CUDA_VERSION="${CUDA_VERSION:-cu124}"
 usage() {
   cat <<EOF
 Usage:
-  $0 [api|web|worker|worker-gpu|nginx|cpu|all]
+  $0 [api|web|worker|worker-gpu|vlm-server-gpu|nginx|cpu|all]
 
 Environment:
   IMAGE_REPOSITORY    Image repository/prefix. Default: mineru-enterprise
@@ -39,6 +40,7 @@ Environment:
   PYTHON_BASE_IMAGE   Python base image for CPU worker.
   NODE_BASE_IMAGE     Node base image for web.
   CUDA_BASE_IMAGE     CUDA base image for GPU worker.
+  VLLM_BASE_IMAGE     vLLM OpenAI base image for VLM server.
   NGINX_BASE_IMAGE    Nginx base image.
   APT_MIRROR          Backward-compatible apt mirror fallback.
   API_UBUNTU_APT_MIRROR Ubuntu apt mirror for api.
@@ -133,6 +135,18 @@ build_worker_gpu() {
   push_image "$image"
 }
 
+build_vlm_server_gpu() {
+  local image="${IMAGE_REPOSITORY}/vlm-server-gpu:${IMAGE_TAG}"
+  docker_cmd \
+    --build-arg "VLLM_BASE_IMAGE=${VLLM_BASE_IMAGE}" \
+    --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+    --build-arg "PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}" \
+    -t "$image" \
+    -f "$ROOT_DIR/backend/Dockerfile.vlm-server.gpu" \
+    "$ROOT_DIR/backend"
+  push_image "$image"
+}
+
 build_nginx() {
   local image="${IMAGE_REPOSITORY}/nginx:${IMAGE_TAG}"
   docker_cmd \
@@ -150,6 +164,7 @@ case "$target" in
   web) build_web ;;
   worker) build_worker ;;
   worker-gpu) build_worker_gpu ;;
+  vlm-server-gpu) build_vlm_server_gpu ;;
   nginx) build_nginx ;;
   cpu)
     build_api
@@ -162,6 +177,7 @@ case "$target" in
     build_web
     build_worker
     build_worker_gpu
+    build_vlm_server_gpu
     build_nginx
     ;;
   *)

@@ -20,7 +20,7 @@
 | 能力 | MinerU 官方 | MinerU Enterprise |
 |------|:-----------:|:-----------------:|
 | 文件格式 | PDF/图片/DOCX/PPTX/XLSX | 同官方，全部对齐 |
-| 解析引擎 | pipeline / vlm / MinerU-HTML | 同官方 |
+| 解析引擎 | pipeline / vlm / vlm-http-client / hybrid | 同官方 |
 | 解析参数 | OCR / 公式 / 表格 / 页码范围 / 语言 | 同官方，全部对齐 |
 | 输出格式 | Markdown / JSON / DOCX / HTML / LaTeX | 同官方 |
 | 批量处理 | 最多 100 个 | 同官方 |
@@ -102,7 +102,17 @@ GPU 模式需要服务器已安装 [nvidia-container-toolkit](https://docs.nvidi
 bash scripts/start.sh gpu
 ```
 
-GPU 模式会同时启动 CPU Worker 和 GPU Worker，共享同一个任务队列。GPU Worker 优先消费任务，CPU Worker 作为兜底。
+GPU 模式会启动常驻 `mineru-api-gpu` 和 GPU Worker。生产 `prod` 模式会禁用 CPU Worker，所有解析任务进入 GPU 队列。
+
+如需 VLM 走 `vlm-http-client` + vLLM/lmdeploy 推理服务：
+
+```bash
+# .env 中开启：
+# MINERU_VLM_HTTP_CLIENT_ENABLED=true
+# MINERU_VLM_SERVER_URL=http://mineru-vlm-server-gpu:30000
+
+bash scripts/start.sh prod-vlm
+```
 
 #### 工作原理
 
@@ -112,6 +122,7 @@ GPU 模式会同时启动 CPU Worker 和 GPU Worker，共享同一个任务队�
 | PyTorch | CPU-only wheel | CUDA 12.4 wheel |
 | `MINERU_DEVICE` | `cpu` | `cuda` |
 | GPU 设备 | 无 | nvidia GPU passthrough |
+| VLM HTTP Server | 无 | 可选 `mineru-vlm-server-gpu` (`--profile vlm`) |
 
 #### 配置项
 
@@ -120,6 +131,11 @@ MINERU_DEVICE=cpu           # cpu | cuda | mps（默认 cpu，GPU 模式自动�
 NVIDIA_VISIBLE_DEVICES=all  # 指定可见 GPU，如 "0" 或 "0,1"
 GPU_WORKER_DEVICES=         # 可选：指定 GPU worker 使用哪些卡，如 "0,1"；为空则使用所有可见卡
 GPU_WORKER_CONCURRENCY=1    # 每张 GPU 的 Celery 并发数，默认 1
+MINERU_VLM_HTTP_CLIENT_ENABLED=false
+MINERU_VLM_SERVER_URL=http://mineru-vlm-server-gpu:30000
+MINERU_VLM_SERVER_ENGINE=vllm
+MINERU_VLM_SERVER_DEVICES=0,1
+MINERU_VLM_SERVER_ARGS=--tensor-parallel-size 2 --gpu-memory-utilization 0.8 --max-model-len 16384
 ```
 
 GPU worker 启动时会按 GPU 卡号启动多个 Celery worker：每张卡 1 个 worker，每个 worker 的并发由 `GPU_WORKER_CONCURRENCY` 控制。
@@ -136,15 +152,17 @@ GPU worker 启动时会按 GPU 卡号启动多个 Celery worker：每张卡 1 �
 # mineru-enterprise/web:latest
 # mineru-enterprise/worker:latest
 # mineru-enterprise/worker-gpu:latest
+# mineru-enterprise/vlm-server-gpu:latest
 # mineru-enterprise/nginx:latest
 
 bash scripts/build-images.sh api
 bash scripts/build-images.sh web
 bash scripts/build-images.sh worker
 bash scripts/build-images.sh worker-gpu
+bash scripts/build-images.sh vlm-server-gpu
 bash scripts/build-images.sh nginx
 bash scripts/build-images.sh cpu     # api + web + CPU worker + nginx
-bash scripts/build-images.sh all     # api + web + CPU worker + GPU worker + nginx
+bash scripts/build-images.sh all     # api + web + CPU/GPU worker + VLM server + nginx
 ```
 
 自定义仓库、版本号、平台和推送：
@@ -182,6 +200,11 @@ CUDA_BASE_IMAGE=registry.example.com/nvidia/cuda:12.4.1-runtime-ubuntu22.04 \
 UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
 PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
 bash scripts/build-images.sh worker-gpu
+
+# VLM Server: vLLM OpenAI 基础镜像、pip 源
+VLLM_BASE_IMAGE=registry.example.com/vllm/vllm-openai:v0.21.0-cu129 \
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+bash scripts/build-images.sh vlm-server-gpu
 
 # Nginx: Nginx 基础镜像、Alpine 源
 NGINX_BASE_IMAGE=registry.example.com/library/nginx:1.27-alpine \
@@ -329,7 +352,7 @@ mineru-enterprise/
   "s3_key": "uploads/xxx/file.pdf",
   "original_filename": "report.pdf",
   "file_size_bytes": 5242880,
-  "backend": "pipeline",         // pipeline | vlm | MinerU-HTML
+  "backend": "pipeline",         // pipeline | vlm-auto-engine | vlm-http-client
   "output_format": "markdown",    // markdown | json | both | docx | html | latex
   "language": "ch",               // ch | en | japan | korean | latin | arabic | ...
   "is_ocr": null,                 // null=自动, true=强制, false=关闭

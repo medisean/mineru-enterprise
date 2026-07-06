@@ -11,6 +11,7 @@
 | `mineru-enterprise/api` | `backend/Dockerfile` | `ubuntu:22.04` | FastAPI 服务，含 LDAP 等系统依赖；Python 依赖安装到 `/opt/venv` |
 | `mineru-enterprise/worker` | `backend/Dockerfile.worker` | `python:3.11-slim` | Celery CPU Worker，含 PyTorch CPU 与 MinerU 依赖 |
 | `mineru-enterprise/worker-gpu` | `backend/Dockerfile.worker.gpu` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | Celery GPU Worker，PyTorch CUDA 12.4；模型运行时挂载 |
+| `mineru-enterprise/vlm-server-gpu` | `backend/Dockerfile.vlm-server.gpu` | `vllm/vllm-openai:v0.21.0-cu129` | 可选 OpenAI-compatible VLM 推理服务，供 `vlm-http-client` 使用 |
 | `mineru-enterprise/web` | `frontend/Dockerfile` | `node:20-alpine` | Next.js 14 前端，多阶段构建 standalone 输出 |
 | `mineru-enterprise/nginx` | `docker/Dockerfile.nginx` | `nginx:1.27-alpine` | 反向代理，含 WebSocket 支持 |
 
@@ -25,12 +26,13 @@ cd /path/to/mineru-web
 ./scripts/build-images.sh web
 ./scripts/build-images.sh worker
 ./scripts/build-images.sh worker-gpu
+./scripts/build-images.sh vlm-server-gpu
 ./scripts/build-images.sh nginx
 
 # 构建 CPU 全套（api + web + worker + nginx）
 ./scripts/build-images.sh cpu
 
-# 构建全部（含 GPU worker）
+# 构建全部（含 GPU worker 与 VLM server）
 ./scripts/build-images.sh all
 ```
 
@@ -46,6 +48,7 @@ cd /path/to/mineru-web
 | `PYTHON_BASE_IMAGE` | `python:3.11-slim` | CPU Worker Python 基础镜像 |
 | `NODE_BASE_IMAGE` | `node:20-alpine` | Node 基础镜像 |
 | `CUDA_BASE_IMAGE` | `nvidia/cuda:12.4.1-runtime-ubuntu22.04` | CUDA 基础镜像 |
+| `VLLM_BASE_IMAGE` | `vllm/vllm-openai:v0.21.0-cu129` | VLM HTTP server 基础镜像 |
 | `TORCH_VERSION` | `2.7.0` | PyTorch 版本 |
 | `CUDA_VERSION` | `cu124` | CUDA wheel 后缀 |
 | `NEXT_PUBLIC_API_URL` | (空) | 前端运行时 API 地址，留空表示使用当前域名 |
@@ -120,6 +123,9 @@ docker compose --profile minio up -d
 
 # 生产（GPU only）
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile gpu up -d
+
+# 生产（GPU only + VLM HTTP server）
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile gpu --profile vlm up -d
 ```
 
 GPU worker 默认使用所有可见 GPU；也可以通过环境变量指定卡号：
@@ -129,6 +135,18 @@ GPU_WORKER_DEVICES=0,1 ./scripts/start.sh prod
 ```
 
 每张卡会启动 1 个 Celery worker，每个 worker 并发为 1。
+
+如需 VLM 走 `vlm-http-client`，在 `.env` 中开启并启动 `vlm` profile：
+
+```env
+MINERU_VLM_HTTP_CLIENT_ENABLED=true
+MINERU_VLM_SERVER_URL=http://mineru-vlm-server-gpu:30000
+MINERU_VLM_SERVER_ENGINE=vllm
+MINERU_VLM_SERVER_DEVICES=0,1
+MINERU_VLM_SERVER_ARGS=--tensor-parallel-size 2 --gpu-memory-utilization 0.8 --max-model-len 16384
+```
+
+`pipeline` 仍走常驻 `mineru-api-gpu`；只有 VLM backend 会被 worker 转为 `vlm-http-client -u MINERU_VLM_SERVER_URL`。
 
 ### 1.6 服务端口
 
