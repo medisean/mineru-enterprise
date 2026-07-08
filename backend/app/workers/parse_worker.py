@@ -77,39 +77,15 @@ def _on_worker_process_init(**_kwargs):
 
 
 MINERU_BACKEND_ALIASES = {
-    "vlm": "vlm-engine",
     "vlm-auto-engine": "vlm-engine",
-    "hybrid": "hybrid-engine",
     "hybrid-auto-engine": "hybrid-engine",
 }
-VLM_BACKENDS = {"vlm", "vlm-auto-engine", "vlm-engine", "vlm-http-client"}
 
 
 def _normalize_mineru_backend(backend: str) -> str:
     if not backend:
         backend = settings.MINERU_API_DEFAULT_BACKEND
     return MINERU_BACKEND_ALIASES.get(backend, backend)
-
-
-def _resolve_mineru_backend_and_server_url(backend: str, server_url: str | None) -> tuple[str, str | None]:
-    raw_backend = backend or settings.MINERU_API_DEFAULT_BACKEND
-    raw_backend = raw_backend or ""
-    resolved_server_url = server_url or None
-
-    wants_vlm_http = (
-        raw_backend == "vlm-http-client"
-        or (
-            raw_backend in VLM_BACKENDS
-            and (settings.MINERU_VLM_HTTP_CLIENT_ENABLED or resolved_server_url or settings.MINERU_VLM_SERVER_URL)
-        )
-    )
-    if wants_vlm_http:
-        resolved_server_url = resolved_server_url or settings.MINERU_VLM_SERVER_URL
-        if not resolved_server_url:
-            raise ValueError("MINERU_VLM_SERVER_URL is required when using vlm-http-client")
-        return "vlm-http-client", resolved_server_url
-
-    return _normalize_mineru_backend(raw_backend), resolved_server_url
 
 
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
@@ -251,7 +227,7 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             or settings.MINERU_API_URL
             or settings.MINERU_SERVER_URL
         )
-        backend, server_url = _resolve_mineru_backend_and_server_url(str(backend or ""), str(server_url) if server_url else None)
+        backend = _normalize_mineru_backend(str(backend or ""))
 
         with tempfile.TemporaryDirectory() as output_dir:
             cmd = [

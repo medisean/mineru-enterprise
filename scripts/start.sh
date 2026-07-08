@@ -37,15 +37,6 @@ case $MODE in
     echo "  API:       http://localhost:8000/api/docs"
     echo "  GPU Worker: 已启用（CPU Worker 已禁用）"
     ;;
-  prod-vlm)
-    echo "启动生产模式（GPU only + Nginx + VLM HTTP server）..."
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile gpu --profile vlm up -d
-    echo -e "${GREEN}✅ 服务已启动（生产模式 — GPU only + VLM HTTP server）${NC}"
-    echo "  Nginx:      http://localhost:80"
-    echo "  API:        http://localhost:8000/api/docs"
-    echo "  GPU Worker: 已启用（CPU Worker 已禁用）"
-    echo "  VLM Server: 已启用（需 MINERU_VLM_HTTP_CLIENT_ENABLED=true）"
-    ;;
   gpu)
     echo "启动 GPU 模式（需要 nvidia-container-toolkit）..."
     docker compose --profile minio --profile gpu --profile proxy up -d
@@ -58,25 +49,15 @@ case $MODE in
     echo "  MinIO:     http://localhost:9001"
     echo "  GPU Worker: 已启用 (MINERU_DEVICE=cuda)"
     ;;
-  gpu-vlm)
-    echo "启动 GPU 模式（含 MinIO + Nginx + VLM HTTP server）..."
-    docker compose --profile minio --profile gpu --profile vlm --profile proxy up -d
-    echo -e "${GREEN}✅ 服务已启动（GPU 加速 + VLM HTTP server）${NC}"
-    echo "  统一入口:   http://localhost"
-    echo "  前端:       http://localhost"
-    echo "  API:        http://localhost/api/docs"
-    echo "  MinIO:      http://localhost:9001"
-    echo "  VLM Server: http://localhost:30000"
-    ;;
   monitor)
     echo "启动监控模式（含 Flower）..."
     docker compose --profile minio --profile monitoring up -d
     echo "  Flower:    http://localhost:5555"
     ;;
   down)
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile minio --profile monitoring --profile production --profile proxy --profile gpu --profile vlm down
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile minio --profile monitoring --profile production --profile proxy --profile gpu down
     ;;
   *)
-    echo "用法: ./scripts/start.sh [dev|prod|prod-vlm|gpu|gpu-vlm|monitor|down]"
+    echo "用法: ./scripts/start.sh [dev|prod|gpu|monitor|down]"
     ;;
 esac

@@ -70,8 +70,6 @@ services:
       MINERU_DEVICE: "cpu"
       MINERU_SERVER_URL: "http://mineru-api-local:${MINERU_API_PORT:-8000}"
       MINERU_API_URL: "http://mineru-api-local:${MINERU_API_PORT:-8000}"
-      MINERU_VLM_HTTP_CLIENT_ENABLED: "${MINERU_VLM_HTTP_CLIENT_ENABLED:-false}"
-      MINERU_VLM_SERVER_URL: "${MINERU_VLM_SERVER_URL:-}"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
