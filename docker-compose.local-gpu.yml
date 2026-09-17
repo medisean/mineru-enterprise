@@ -33,15 +33,22 @@ services:
     env_file: .env
     environment:
       MINERU_DEVICE: "cpu"
+      MINERU_HOME: "/opt/mineru-models"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
       TRANSFORMERS_CACHE: "/opt/mineru-models/huggingface/hub"
     volumes:
       - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models
       - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
-    command: python -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000} --enable-vlm-preload ${MINERU_ENABLE_VLM_PRELOAD:-false}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -- --host 0.0.0.0 --port "${MINERU_API_PORT:-8000}" --tier standard
+        if [ "$${MINERU_ENABLE_VLM_PRELOAD:-false}" = "true" ]; then set -- "$@" --preload-models; fi
+        exec python -m mineru.kit.main api-server "$@"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/docs >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/v1/health >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -68,6 +75,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cpu"
+      MINERU_HOME: "/opt/mineru-models"
       MINERU_SERVER_URL: "http://mineru-api-local:${MINERU_API_PORT:-8000}"
       MINERU_API_URL: "http://mineru-api-local:${MINERU_API_PORT:-8000}"
       HF_HOME: "/opt/mineru-models/huggingface"

@@ -73,7 +73,7 @@ services:
 
   # ── MinIO (S3-compatible, optional — skip if using real S3) ─────────────────
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -93,7 +93,7 @@ services:
 
   # ── MinIO bucket init ────────────────────────────────────────────────────────
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     depends_on:
       minio:
         condition: service_healthy
@@ -139,6 +139,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cpu"
+      MINERU_HOME: "/opt/mineru-models"
       MINERU_MODEL_SOURCE: "local"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
@@ -161,6 +162,7 @@ services:
     env_file: .env
     environment:
       MINERU_DEVICE: "cuda"
+      MINERU_HOME: "/opt/mineru-models"
       NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"
@@ -171,9 +173,15 @@ services:
     volumes:
       - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models:ro
       - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
-    command: python3 -m mineru.cli.fast_api --host 0.0.0.0 --port ${MINERU_API_PORT:-8000} --enable-vlm-preload ${MINERU_ENABLE_VLM_PRELOAD:-false}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -- --host 0.0.0.0 --port "${MINERU_API_PORT:-8000}" --tier standard
+        if [ "$${MINERU_ENABLE_VLM_PRELOAD:-false}" = "true" ]; then set -- "$@" --preload-models; fi
+        exec python3 -m mineru.kit.main api-server "$@"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/docs >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${MINERU_API_PORT:-8000}/v1/health >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 20
@@ -199,6 +207,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       MINERU_DEVICE: "cuda"
+      MINERU_HOME: "/opt/mineru-models"
       NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
       HF_HOME: "/opt/mineru-models/huggingface"
       HUGGINGFACE_HUB_CACHE: "/opt/mineru-models/huggingface/hub"

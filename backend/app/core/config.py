@@ -69,10 +69,11 @@ class Settings(BaseSettings):
     S3_PRESIGN_EXPIRE_SECONDS: int = 3600
 
     # ── MinerU Engine ─────────────────────────────────────────────────────
-    MINERU_BACKEND: str = ""                  # empty = MinerU default
+    MINERU_BACKEND: str = ""                  # legacy name; mapped to a MinerU 4.x tier
     MINERU_API_DEFAULT_BACKEND: str = "pipeline"
-    MINERU_SERVER_URL: str = ""                # persistent mineru-api base URL passed as CLI --api-url
-    MINERU_API_URL: str = ""                   # optional MinerU API URL override passed through to CLI
+    MINERU_SERVER_URL: str = ""                # persistent MinerU 4.x V1 API base URL
+    MINERU_API_URL: str = ""                   # optional MinerU 4.x V1 API base URL
+    MINERU_API_KEY: str = ""                   # optional key for a protected MinerU V1 API
     MINERU_DEVICE: str = "cpu"                 # cpu | cuda | mps
     MINERU_OUTPUT_FORMAT: str = "markdown"     # markdown | json | both
 

@@ -20,7 +20,7 @@
 | 能力 | MinerU 官方 | MinerU Enterprise |
 |------|:-----------:|:-----------------:|
 | 文件格式 | PDF/图片/DOCX/PPTX/XLSX | 同官方，全部对齐 |
-| 解析引擎 | pipeline / vlm / hybrid | 同官方 |
+| 解析引擎 | flash / basic / standard / advanced | 同官方；兼容旧 backend 名称 |
 | 解析参数 | OCR / 公式 / 表格 / 页码范围 / 语言 | 同官方，全部对齐 |
 | 输出格式 | Markdown / JSON / DOCX / HTML / LaTeX | 同官方 |
 | 批量处理 | 最多 100 个 | 同官方 |
@@ -329,7 +329,7 @@ mineru-enterprise/
   "s3_key": "uploads/xxx/file.pdf",
   "original_filename": "report.pdf",
   "file_size_bytes": 5242880,
-  "backend": "pipeline",         // pipeline | vlm-auto-engine
+  "backend": "pipeline",         // pipeline/basic | hybrid/standard | vlm/advanced
   "output_format": "markdown",    // markdown | json | both | docx | html | latex
   "language": "ch",               // ch | en | japan | korean | latin | arabic | ...
   "is_ocr": null,                 // null=自动, true=强制, false=关闭

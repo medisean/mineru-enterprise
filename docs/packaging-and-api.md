@@ -540,7 +540,7 @@ curl http://localhost:8000/api/v1/agent/parse/<task_id>
 | `s3_key` | string | ✅ | — | 上传后返回的 S3 key |
 | `original_filename` | string | ✅ | — | 原始文件名 |
 | `file_size_bytes` | int | ✅ | — | 文件大小（字节） |
-| `backend` | string | ❌ | `""` | 解析引擎：`pipeline` / `vlm-auto-engine` / 空=服务端默认（当前为 `pipeline`） |
+| `backend` | string | ❌ | `""` | MinerU 4.x 档位或兼容名：`basic`/`pipeline`、`standard`/`hybrid`、`advanced`/`vlm`；空=服务端默认 |
 | `output_format` | string | ❌ | `"markdown"` | 输出格式：`markdown` / `json` / `both` / `docx` / `html` / `latex` |
 | `language` | string | ❌ | `""` | 文档语言：空=自动检测 / `ch` / `en` / `japan` / `korean` 等 |
 | `is_ocr` | bool/null | ❌ | `null` | OCR：`null`=自动检测 / `true`=强制 / `false`=禁用 |

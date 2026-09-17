@@ -48,9 +48,9 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url 
         python3 -m pip install --no-cache-dir --break-system-packages torch==${TORCH_VERSION} torchvision; \
     fi
 
-# ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
-COPY requirements.txt requirements-worker.txt ./
-RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements-worker.txt
+# ── Install MinerU 4.0.1 with the official VLM stack ────────────────────────
+COPY requirements.txt requirements-worker.txt requirements-worker-gpu.txt ./
+RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements-worker-gpu.txt
 
 # ── Runtime-mounted MinerU model paths ───────────────────────────────────────
 ENV HF_HOME=/opt/mineru-models/huggingface \

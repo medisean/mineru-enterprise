@@ -3,6 +3,7 @@ Celery worker — MinerU document parsing tasks.
 """
 import os
 import io
+import shlex
 import zipfile
 import signal
 import tempfile
@@ -19,6 +20,7 @@ from app.services.official_result_exports import (
     normalize_extra_formats,
     render_extra_format_files,
 )
+from app.services.mineru_compat import build_mineru_command, extract_mineru_zip
 
 from app.core.config import settings
 from app.core.schema_compat import try_ensure_sync_schema_compat
@@ -76,21 +78,9 @@ def _on_worker_process_init(**_kwargs):
     _ensure_worker_schema_compat("worker_process_init")
 
 
-MINERU_BACKEND_ALIASES = {
-    "vlm-auto-engine": "vlm-engine",
-    "hybrid-auto-engine": "hybrid-engine",
-}
-
-
-def _normalize_mineru_backend(backend: str) -> str:
-    if not backend:
-        backend = settings.MINERU_API_DEFAULT_BACKEND
-    return MINERU_BACKEND_ALIASES.get(backend, backend)
-
-
 def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, config: dict):
     """Shared parsing logic used by both CPU and GPU task variants."""
-    import subprocess, json, glob, threading
+    import subprocess, threading
 
     # Use the module-level engine/session factory (connection pool is reused)
     _ensure_worker_schema_compat("parse_task_start")
@@ -202,13 +192,10 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
         office_ext = _get_office_extension(input_s3_key)
 
-        # Build MinerU CLI command with full parameter set
+        # Build the MinerU 4.x stateless CLI command with the full Enterprise
+        # parameter set. The old 3.x flags are intentionally not emitted.
         backend = config.get("backend") or settings.MINERU_BACKEND
-        device = config.get("device", settings.MINERU_DEVICE)
-        language = config.get("language", "")
         is_ocr = config.get("is_ocr")
-        enable_formula = config.get("enable_formula", True)
-        enable_table = config.get("enable_table", True)
         page_ranges = config.get("page_ranges")
         parse_options = config.get("parse_options") or {}
         image_analysis = _parse_bool_option(
@@ -227,65 +214,31 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             or settings.MINERU_API_URL
             or settings.MINERU_SERVER_URL
         )
-        backend = _normalize_mineru_backend(str(backend or ""))
+        api_key = parse_options.get("api-key") or parse_options.get("api_key") or settings.MINERU_API_KEY
 
         with tempfile.TemporaryDirectory() as output_dir:
-            cmd = [
-                "mineru",
-                "-p", tmp_path,
-                "-o", output_dir,
-            ]
-
-            # MinerU 3.x CLI uses backend/method flags. Device is selected by
-            # the worker image/runtime, not by a CLI --device flag.
-            if backend:
-                cmd += ["-b", backend]
-
-            if is_ocr is True:
-                cmd += ["-m", "ocr"]
-            elif is_ocr is False:
-                cmd += ["-m", "txt"]
-            else:
-                cmd += ["-m", "auto"]
-
-            if language and language != "auto":
-                cmd += ["-l", language]
-
-            cmd += ["-f", _bool_cli(enable_formula)]
-            cmd += ["-t", _bool_cli(enable_table)]
-            cmd += ["--image-analysis", _bool_cli(image_analysis)]
-
-            start_page, end_page = _page_range_to_start_end(page_ranges)
-            if start_page is not None:
-                cmd += ["-s", str(start_page)]
-            if end_page is not None:
-                cmd += ["-e", str(end_page)]
-
-            if server_url:
-                cmd += ["-u", str(server_url)]
-            if api_url:
-                cmd += ["--api-url", str(api_url)]
-
-            # Any extra MinerU 3.x CLI options from parse_options.
-            handled_options = {
-                "url", "server-url", "api-url",
-                "output-format", "device", "backend", "pages", "formats",
-                "lang", "ocr", "formula", "table", "image-analysis",
-            }
-            for key, value in parse_options.items() if parse_options else []:
-                if key in handled_options:
-                    continue
-                if value is True:
-                    cmd.append(f"--{key}")
-                elif value is False:
-                    cmd.append(f"--no-{key}")
-                elif value is not None:
-                    cmd.extend([f"--{key}", str(value)])
+            cmd = build_mineru_command(
+                tmp_path,
+                output_dir,
+                backend=str(backend or ""),
+                default_backend=settings.MINERU_API_DEFAULT_BACKEND,
+                is_ocr=is_ocr,
+                page_ranges=page_ranges,
+                image_analysis=image_analysis,
+                api_url=api_url or server_url,
+                api_key=api_key,
+                parse_options=parse_options,
+            )
 
             update_task_status("processing", progress=30)
             self.update_state(state="PROGRESS", meta={"progress": 30, "message": "Running MinerU parser..."})
 
-            logger.info("MinerU command", cmd=" ".join(cmd), task_id=task_id)
+            log_cmd = list(cmd)
+            if "--api-key" in log_cmd:
+                key_index = log_cmd.index("--api-key") + 1
+                if key_index < len(log_cmd):
+                    log_cmd[key_index] = "<redacted>"
+            logger.info("MinerU command", cmd=shlex.join(log_cmd), task_id=task_id)
 
             process = subprocess.Popen(
                 cmd,
@@ -371,6 +324,8 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             if process.returncode != 0:
                 raise RuntimeError(f"MinerU error (exit {process.returncode}): {_summarize_process_output(stderr, head=2400, tail=3600)}")
+
+            extract_mineru_zip(output_dir, Path(input_s3_key).stem)
 
             update_task_status("processing", progress=80)
             self.update_state(state="PROGRESS", meta={"progress": 80, "message": "Uploading results"})
@@ -491,11 +446,6 @@ def upload_missing_images_from_zip(storage_service, zip_key: str, output_s3_pref
     return uploaded
 
 
-def _bool_cli(value) -> str:
-    """Return MinerU 3.x boolean CLI value."""
-    return "true" if bool(value) else "false"
-
-
 def _summarize_process_output(value: str, head: int = 3000, tail: int = 5000) -> str:
     """Keep both ends of long subprocess logs so traceback root causes survive."""
     text = value or ""
@@ -519,26 +469,6 @@ def _parse_bool_option(value, default: bool) -> bool:
     if text in {"0", "false", "no", "n", "off"}:
         return False
     return default
-
-
-def _page_range_to_start_end(page_ranges: str | None) -> tuple[int | None, int | None]:
-    """Convert a 1-based page range such as '1-10' or '2' to MinerU 0-based bounds."""
-    if not page_ranges:
-        return None, None
-    first_range = str(page_ranges).split(",", 1)[0].strip()
-    if not first_range:
-        return None, None
-    if "-" in first_range:
-        start_raw, end_raw = first_range.split("-", 1)
-    else:
-        start_raw, end_raw = first_range, first_range
-    try:
-        start = max(int(start_raw.strip()) - 1, 0)
-        end = max(int(end_raw.strip()) - 1, start)
-        return start, end
-    except ValueError:
-        logger.warning("Invalid page range ignored", page_ranges=page_ranges)
-        return None, None
 
 
 def _get_office_extension(s3_key: str) -> str | None:
