@@ -41,6 +41,16 @@ def test_builds_official_mineru_4_command():
     assert "-b" not in command
 
 
+def test_office_documents_use_flash_tier_even_with_legacy_pipeline_default():
+    command = build_mineru_command(
+        "/tmp/input.docx",
+        "/tmp/output",
+        backend="pipeline",
+    )
+
+    assert command[command.index("--tier") + 1] == "flash"
+
+
 def test_extracts_and_normalizes_mineru_4_zip(tmp_path: Path):
     output_dir = tmp_path / "output"
     output_dir.mkdir()

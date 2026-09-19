@@ -189,7 +189,13 @@ export default function TaskDetailPage() {
   const { data: sourceUrlData } = useQuery({
     queryKey: ["source-url", taskId],
     queryFn: () => apiClient.get(`/tasks/${taskId}/source-url`).then((r) => r.data),
-    enabled: task?.status === "success",
+    enabled: !!task,
+    refetchInterval: (query) => {
+      const status = task?.status;
+      const sourceIsOffice = task?.original_filename ? isOfficeFile(task.original_filename) : false;
+      const waitingForOfficePreview = sourceIsOffice && query.state.data?.preview_type !== "pdf";
+      return waitingForOfficePreview && (status === "pending" || status === "processing") ? 3000 : false;
+    },
   });
   const sourceFileUrl = sourceUrlData?.download_url;
   const previewType = sourceUrlData?.preview_type;

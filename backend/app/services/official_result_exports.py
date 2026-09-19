@@ -90,14 +90,18 @@ def build_result_zip_bytes(
     return buffer.read()
 
 
-def ensure_full_result_zip(storage_service, output_prefix: str) -> str | None:
+def ensure_full_result_zip(storage_service, output_prefix: str, *, force: bool = False) -> str | None:
     """Ensure an official-style full result zip exists and return its S3 key."""
     if not output_prefix:
         return None
     zip_key = f"{output_prefix.rstrip('/')}/{ZIP_EXPORT_DIR}/{FULL_ZIP_NAME}"
-    for obj in storage_service.list_objects(f"{output_prefix.rstrip('/')}/{ZIP_EXPORT_DIR}/"):
-        if obj["key"] == zip_key:
-            return zip_key
+    if not force:
+        for obj in storage_service.list_objects(f"{output_prefix.rstrip('/')}/{ZIP_EXPORT_DIR}/"):
+            if obj["key"] == zip_key:
+                return zip_key
+
+    if force and storage_service.object_exists(zip_key):
+        storage_service.delete_object(zip_key)
 
     data = build_result_zip_bytes(storage_service, output_prefix)
     storage_service.upload_bytes(zip_key, data, "application/zip")

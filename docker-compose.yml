@@ -154,6 +154,31 @@ services:
       - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
     command: celery -A app.workers.parse_worker.celery_app worker -Q parse_cpu -c ${CPU_WORKER_CONCURRENCY:-1} --loglevel=info
 
+  # ── Celery Worker (Office preview jobs) ─────────────────────────────────────
+  # Kept separate from parse_cpu so LibreOffice conversion never occupies the
+  # MinerU parser worker and both jobs can run at the same time.
+  worker-preview:
+    image: ${IMAGE_REPOSITORY:-mineru-enterprise}/worker:${IMAGE_TAG:-latest}
+    build: *worker-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mineru}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/1"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/2"
+      MINERU_HOME: "/opt/mineru-models"
+      MINERU_MODEL_SOURCE: "local"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ${MINERU_MODELS_HOST_PATH:-./backend/mineru-models}:/opt/mineru-models
+      - ${MINERU_CONFIG_HOST_PATH:-./backend/mineru.json}:/root/mineru.json:ro
+    command: celery -A app.workers.parse_worker.celery_app worker -Q preview -c ${PREVIEW_WORKER_CONCURRENCY:-2} --loglevel=info
+
   # ── MinerU API — persistent GPU parser service ───────────────────────────────
   mineru-api-gpu:
     image: ${IMAGE_REPOSITORY:-mineru-enterprise}/worker-gpu:${IMAGE_TAG:-latest}

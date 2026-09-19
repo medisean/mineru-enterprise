@@ -45,6 +45,7 @@ celery_app.conf.update(
     task_routes={
         "app.workers.parse_worker.parse_document_cpu": {"queue": "parse_cpu"},
         "app.workers.parse_worker.parse_document_gpu": {"queue": "parse_gpu"},
+        "app.workers.parse_worker.prepare_office_preview": {"queue": "preview"},
         "app.workers.webhook_worker.deliver_webhook": {"queue": "webhook"},
     },
 )
@@ -189,8 +190,6 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
-
-        office_ext = _get_office_extension(input_s3_key)
 
         # Build the MinerU 4.x stateless CLI command with the full Enterprise
         # parameter set. The old 3.x flags are intentionally not emitted.
@@ -357,23 +356,10 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                             storage_service.upload_bytes(s3_key, f.read(), content_type)
                     uploaded_files.append(s3_key)
 
-            # Convert Office source files (PPTX/DOCX/XLSX) to PDF for preview
-            if office_ext:
-                try:
-                    pdf_path = _convert_office_to_pdf(tmp_path, office_ext)
-                    if pdf_path and os.path.exists(pdf_path):
-                        pdf_s3_key = f"{output_s3_prefix}/_preview/source_preview.pdf"
-                        with open(pdf_path, "rb") as pf:
-                            storage_service.upload_bytes(pdf_s3_key, pf.read(), "application/pdf")
-                            uploaded_files.append(pdf_s3_key)
-                        pdf_dir = os.path.dirname(pdf_path)
-                        os.unlink(pdf_path)
-                        shutil.rmtree(pdf_dir, ignore_errors=True)
-                        logger.info("Office→PDF preview generated", task_id=task_id)
-                except Exception as e:
-                    logger.info("Office PDF preview unavailable; parse result is unaffected", task_id=task_id, error=str(e))
-
-            full_zip_key = ensure_full_result_zip(storage_service, output_s3_prefix)
+            # The Office preview runs in a separate queue and may finish before
+            # or after parsing. Rebuild the archive here so a completed parse
+            # always includes the preview when it is already available.
+            full_zip_key = ensure_full_result_zip(storage_service, output_s3_prefix, force=True)
             if full_zip_key:
                 uploaded_files.append(full_zip_key)
                 uploaded_files.extend(
@@ -568,6 +554,60 @@ def _first_log_line(value: str, limit: int = 240) -> str:
     return (line[0] if line else "")[:limit]
 
 
+@celery_app.task(
+    bind=True,
+    name="app.workers.parse_worker.prepare_office_preview",
+    max_retries=0,
+    soft_time_limit=300,
+)
+def prepare_office_preview(self, task_id: str, input_s3_key: str, output_s3_prefix: str) -> dict:
+    """Convert Office input to a PDF on the independent preview queue."""
+    from app.services.storage import storage_service
+
+    office_ext = _get_office_extension(input_s3_key)
+    if not office_ext:
+        return {"status": "skipped", "output_prefix": output_s3_prefix}
+
+    tmp_path = None
+    pdf_path = None
+    try:
+        file_bytes = storage_service.download_bytes(input_s3_key)
+        suffix = "." + input_s3_key.rsplit(".", 1)[-1].lower()
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+
+        pdf_path = _convert_office_to_pdf(tmp_path, office_ext)
+        if not pdf_path or not os.path.exists(pdf_path):
+            logger.info("Office PDF preview unavailable; parse result is unaffected", task_id=task_id)
+            return {"status": "unavailable", "output_prefix": output_s3_prefix}
+
+        preview_s3_key = f"{output_s3_prefix}/_preview/source_preview.pdf"
+        with open(pdf_path, "rb") as pdf_file:
+            storage_service.upload_bytes(preview_s3_key, pdf_file.read(), "application/pdf")
+
+        # Parsing may already have completed and created full.zip. Rebuild it
+        # after the preview upload; if parsing is still running, its own final
+        # rebuild will include all parser outputs as well.
+        ensure_full_result_zip(storage_service, output_s3_prefix, force=True)
+        logger.info("Office→PDF preview generated in parallel", task_id=task_id)
+        return {
+            "status": "success",
+            "output_prefix": output_s3_prefix,
+            "preview_s3_key": preview_s3_key,
+        }
+    except Exception as exc:
+        logger.info("Office PDF preview failed; parse result is unaffected", task_id=task_id, error=str(exc))
+        return {"status": "failed", "output_prefix": output_s3_prefix, "error": str(exc)}
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        if pdf_path and os.path.exists(pdf_path):
+            pdf_dir = os.path.dirname(pdf_path)
+            os.unlink(pdf_path)
+            shutil.rmtree(pdf_dir, ignore_errors=True)
+
+
 # ── CPU task entry point ───────────────────────────────────────────────────
 @celery_app.task(
     bind=True,
@@ -603,6 +643,12 @@ def dispatch_parse_task(task_id: str, input_s3_key: str, output_s3_prefix: str, 
       - If FORCE_GPU_QUEUE=true (env var)     → parse_gpu queue (production mode)
       - Otherwise                            → parse_cpu queue (default / dev)
     """
+    if _get_office_extension(input_s3_key):
+        prepare_office_preview.apply_async(
+            args=[task_id, input_s3_key, output_s3_prefix],
+            queue="preview",
+        )
+
     force_gpu = os.environ.get("FORCE_GPU_QUEUE", "").lower() in ("1", "true", "yes")
     device = config.get("device", settings.MINERU_DEVICE)
 

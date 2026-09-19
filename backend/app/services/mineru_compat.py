@@ -17,6 +17,7 @@ MINERU_TIER_ALIASES = {
     "hybrid-auto-engine": "standard",
 }
 MINERU_TIERS = {"flash", "basic", "standard", "advanced"}
+OFFICE_EXTENSIONS = {".docx", ".pptx", ".xlsx"}
 
 
 def normalize_mineru_tier(backend: str, default_backend: str = "pipeline") -> str:
@@ -58,6 +59,11 @@ def build_mineru_command(
     """Build the official 4.x ``mineru-kit parse`` command."""
     options = parse_options or {}
     tier = normalize_mineru_tier(str(options.get("tier") or backend or ""), default_backend)
+    # MinerU 4.x routes Office documents through its Flash tier.  The legacy
+    # Enterprise API defaults to pipeline/basic, so normalize that default
+    # here instead of making every caller know this file-type restriction.
+    if Path(input_path).suffix.lower() in OFFICE_EXTENSIONS:
+        tier = "flash"
     ocr_mode = options.get("ocr-mode", options.get("ocr_mode"))
     if ocr_mode is None:
         ocr_mode = "ocr" if is_ocr is True else "txt" if is_ocr is False else "auto"
