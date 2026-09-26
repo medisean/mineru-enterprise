@@ -70,6 +70,7 @@ interface PreviewData {
   offset?: number;
   next_offset?: number | null;
   truncated?: boolean;
+  page_markers?: Array<{ page: number; offset: number }>;
 }
 
 interface PreviewChunkData {
@@ -94,6 +95,8 @@ const PDF_EXTENSIONS = ["pdf"];
 const IMAGE_EXTENSIONS = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"];
 const OFFICE_EXTENSIONS = ["pptx", "docx", "xlsx"];
 const PREVIEW_CHUNK_BYTES = 256 * 1024;
+const PAGE_MARKER_PATTERN = /<!--\s*docvortex-page:\s*(\d+)\s*-->/g;
+const EMPTY_MARKDOWN_ANCHOR_PATTERN = /<a\b(?=[^>]*\bid\s*=\s*["'][^"']+["'])[^>]*>\s*<\/a>/gi;
 
 function isPdfFile(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -125,6 +128,45 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+interface MarkdownPageSection {
+  page: number | null;
+  content: string;
+}
+
+function splitMarkdownByPage(content: string): MarkdownPageSection[] {
+  PAGE_MARKER_PATTERN.lastIndex = 0;
+  const sections: MarkdownPageSection[] = [];
+  let cursor = 0;
+  let currentPage: number | null = null;
+  let match: RegExpExecArray | null;
+
+  while ((match = PAGE_MARKER_PATTERN.exec(content)) !== null) {
+    const beforeMarker = content.slice(cursor, match.index);
+    if (beforeMarker) sections.push({ page: currentPage, content: beforeMarker });
+    currentPage = Number(match[1]);
+    cursor = match.index + match[0].length;
+  }
+
+  const remainder = content.slice(cursor);
+  if (remainder || sections.length === 0) {
+    sections.push({ page: currentPage, content: remainder });
+  }
+  return sections;
+}
+
+function stripPageMarkers(content: string) {
+  return content.replace(PAGE_MARKER_PATTERN, "");
+}
+
+/**
+ * MinerU intentionally emits empty HTML anchors for document bookmarks/TOC
+ * targets. Keep them in the canonical downloaded Markdown, but do not expose
+ * these implementation details in the rendered preview or copied text.
+ */
+function stripEmptyMarkdownAnchors(content: string) {
+  return content.replace(EMPTY_MARKDOWN_ANCHOR_PATTERN, "");
+}
+
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const router = useRouter();
@@ -154,6 +196,16 @@ export default function TaskDetailPage() {
   // Scroll sync refs
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
+  const syncSourceRef = useRef<"left" | "right" | null>(null);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leftSyncFrameRef = useRef<number | null>(null);
+  const rightSyncFrameRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    if (leftSyncFrameRef.current !== null) cancelAnimationFrame(leftSyncFrameRef.current);
+    if (rightSyncFrameRef.current !== null) cancelAnimationFrame(rightSyncFrameRef.current);
+  }, []);
 
   const { data: task, isLoading, isError, refetch } = useQuery({
     queryKey: ["task", taskId],
@@ -167,7 +219,7 @@ export default function TaskDetailPage() {
   const { data: preview, isLoading: previewLoading } = useQuery({
     queryKey: ["task-preview", taskId],
     queryFn: () => apiClient.get(`/tasks/${taskId}/preview`, {
-      params: { limit: PREVIEW_CHUNK_BYTES },
+      params: { limit: PREVIEW_CHUNK_BYTES, with_page_markers: true },
     }).then((r) => r.data as PreviewData),
     enabled: task?.status === "success",
   });
@@ -223,7 +275,9 @@ export default function TaskDetailPage() {
   };
 
   const copyContent = async () => {
-    const text = previewContent || preview?.markdown_content || preview?.content;
+    const text = stripEmptyMarkdownAnchors(
+      stripPageMarkers(previewContent || preview?.markdown_content || preview?.content || ""),
+    );
     if (text) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -240,6 +294,7 @@ export default function TaskDetailPage() {
           offset: previewNextOffset,
           limit: PREVIEW_CHUNK_BYTES,
           preferred_format: preview?.format || "markdown",
+          with_page_markers: true,
         },
       });
       const chunk = res.data as PreviewChunkData;
@@ -294,18 +349,114 @@ export default function TaskDetailPage() {
     }
   };
 
-  // ── Scroll sync (one-way: left → right only) ──────────────────────────
-  const handleLeftScroll = useCallback(() => {
-    const srcEl = leftScrollRef.current;
-    const dstEl = rightScrollRef.current;
-    if (!srcEl || !dstEl) return;
-
-    const srcMax = srcEl.scrollHeight - srcEl.clientHeight;
-    if (srcMax <= 0) return;
-    const ratio = srcEl.scrollTop / srcMax;
-    const dstMax = dstEl.scrollHeight - dstEl.clientHeight;
-    dstEl.scrollTop = ratio * dstMax;
+  const markProgrammaticSync = useCallback((source: "left" | "right") => {
+    syncSourceRef.current = source;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      syncSourceRef.current = null;
+    }, 160);
   }, []);
+
+  const findPagePosition = useCallback((container: HTMLDivElement, selector: string) => {
+    const elements = Array.from(container.querySelectorAll<HTMLElement>(selector));
+    if (elements.length === 0) return null;
+
+    // Normalize both panes to their own first-page origin. Their scroll
+    // containers have different padding, so comparing raw offsetTop values
+    // makes the first page drift as soon as either pane returns to the top.
+    const firstPageOffset = elements[0].offsetTop;
+    const pageStarts = elements.map((element) => Math.max(0, element.offsetTop - firstPageOffset));
+
+    let index = 0;
+    for (let i = 1; i < elements.length; i += 1) {
+      if (pageStarts[i] <= container.scrollTop) index = i;
+      else break;
+    }
+
+    const currentStart = pageStarts[index];
+    const nextStart = pageStarts[index + 1]
+      ?? Math.max(currentStart + 1, container.scrollHeight - container.clientHeight);
+    const span = Math.max(1, nextStart - currentStart);
+    const progress = Math.min(1, Math.max(0, (container.scrollTop - currentStart) / span));
+    const current = elements[index];
+    const page = Number(current.dataset.pdfPage || current.dataset.sourcePage || 0);
+    return page > 0 ? { page, progress } : null;
+  }, []);
+
+  const scrollToPageProgress = useCallback((
+    container: HTMLDivElement,
+    selector: string,
+    page: number,
+    progress: number,
+  ) => {
+    const elements = Array.from(container.querySelectorAll<HTMLElement>(selector));
+    const targetIndex = elements.findIndex((element) => (
+      Number(element.dataset.pdfPage || element.dataset.sourcePage || 0) === page
+    ));
+    if (targetIndex < 0) return false;
+
+    const firstPageOffset = elements[0].offsetTop;
+    const target = elements[targetIndex];
+    const currentStart = Math.max(0, target.offsetTop - firstPageOffset);
+    const nextStart = elements[targetIndex + 1]
+      ? Math.max(0, elements[targetIndex + 1].offsetTop - firstPageOffset)
+      : Math.max(currentStart + 1, container.scrollHeight - container.clientHeight);
+    const span = Math.max(1, nextStart - currentStart);
+    const nextScrollTop = Math.min(
+      container.scrollHeight - container.clientHeight,
+      currentStart + Math.min(1, Math.max(0, progress)) * span,
+    );
+    if (Math.abs(container.scrollTop - nextScrollTop) > 1) {
+      container.scrollTop = nextScrollTop;
+    }
+    return true;
+  }, []);
+
+  const syncByRatio = useCallback((source: HTMLDivElement, destination: HTMLDivElement) => {
+    const sourceMax = source.scrollHeight - source.clientHeight;
+    const destinationMax = destination.scrollHeight - destination.clientHeight;
+    if (sourceMax <= 0 || destinationMax <= 0) return;
+    destination.scrollTop = (source.scrollTop / sourceMax) * destinationMax;
+  }, []);
+
+  // ── Scroll sync (page-aware, with proportional fallback) ────────────────
+  const handleLeftScroll = useCallback(() => {
+    if (syncSourceRef.current === "right") return;
+    if (leftSyncFrameRef.current !== null) return;
+    leftSyncFrameRef.current = requestAnimationFrame(() => {
+      leftSyncFrameRef.current = null;
+      if (syncSourceRef.current === "right") return;
+      const srcEl = leftScrollRef.current;
+      const dstEl = rightScrollRef.current;
+      if (!srcEl || !dstEl) return;
+
+      const sourcePosition = findPagePosition(srcEl, "[data-pdf-page]");
+      const synced = sourcePosition
+        ? scrollToPageProgress(dstEl, "[data-source-page]", sourcePosition.page, sourcePosition.progress)
+        : false;
+      if (!synced) syncByRatio(srcEl, dstEl);
+      markProgrammaticSync("left");
+    });
+  }, [findPagePosition, markProgrammaticSync, scrollToPageProgress, syncByRatio]);
+
+  const handleRightScroll = useCallback(() => {
+    if (syncSourceRef.current === "left") return;
+    if (rightSyncFrameRef.current !== null) return;
+    rightSyncFrameRef.current = requestAnimationFrame(() => {
+      rightSyncFrameRef.current = null;
+      if (syncSourceRef.current === "left") return;
+      const srcEl = rightScrollRef.current;
+      const dstEl = leftScrollRef.current;
+      if (!srcEl || !dstEl) return;
+
+      const sourcePosition = findPagePosition(srcEl, "[data-source-page]");
+      const synced = sourcePosition
+        ? scrollToPageProgress(dstEl, "[data-pdf-page]", sourcePosition.page, sourcePosition.progress)
+        : false;
+      if (!synced) syncByRatio(srcEl, dstEl);
+      markProgrammaticSync("right");
+    });
+  }, [findPagePosition, markProgrammaticSync, scrollToPageProgress, syncByRatio]);
 
   if (isLoading) {
     return (
@@ -330,6 +481,7 @@ export default function TaskDetailPage() {
   }
 
   const statusCfg = STATUS_MAP[task.status] || STATUS_MAP.pending;
+  const visiblePreviewContent = stripEmptyMarkdownAnchors(previewContent);
 
   // Non-success states: compact card view
   if (task.status !== "success") {
@@ -600,6 +752,7 @@ export default function TaskDetailPage() {
           {/* Markdown content */}
           <div
             ref={rightScrollRef}
+            onScroll={handleRightScroll}
             className="flex-1 overflow-auto p-6"
           >
             {previewLoading ? (
@@ -617,9 +770,17 @@ export default function TaskDetailPage() {
                         {previewContent}
                       </pre>
                     ) : (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {previewContent}
-                      </ReactMarkdown>
+                      splitMarkdownByPage(visiblePreviewContent).map((section, index) => (
+                        <div
+                          key={`${section.page ?? "before"}-${index}`}
+                          data-source-page={section.page ?? undefined}
+                          className="markdown-page-section"
+                        >
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {section.content}
+                          </ReactMarkdown>
+                        </div>
+                      ))
                     )
                   ) : (
                     <pre className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 whitespace-pre-wrap">

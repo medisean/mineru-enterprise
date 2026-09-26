@@ -65,6 +65,7 @@ function LazyPdfPage({
   return (
     <div
       ref={pageRef}
+      data-pdf-page={pageNumber}
       className="bg-white shadow-md rounded mb-1"
       style={{
         width: pageWidth || "100%",

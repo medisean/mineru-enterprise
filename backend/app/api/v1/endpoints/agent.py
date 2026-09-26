@@ -51,6 +51,10 @@ CONTENT_TYPE_TO_EXTENSION = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/msword": "doc",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.ms-excel": "xls",
+    "text/html": "html",
 }
 CONTENT_TYPE_BY_EXTENSION = {
     "pdf": "application/pdf",
@@ -65,6 +69,10 @@ CONTENT_TYPE_BY_EXTENSION = {
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "doc": "application/msword",
+    "ppt": "application/vnd.ms-powerpoint",
+    "xls": "application/vnd.ms-excel",
+    "html": "text/html",
 }
 
 
@@ -140,7 +148,12 @@ async def _get_or_create_system_user(db: AsyncSession) -> str:
     return user.id
 
 
-async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
+async def _download_url_to_s3(
+    url: str,
+    user_id: str,
+    *,
+    max_size_bytes: int | None = None,
+) -> tuple[str, str, int]:
     """Download a file from URL and upload to S3. Returns (s3_key, filename, size)."""
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         resp = await client.get(url)
@@ -153,6 +166,8 @@ async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
         filename = f"{filename}.{ext}"
 
     data = resp.content
+    if max_size_bytes is not None and len(data) > max_size_bytes:
+        raise ValueError(f"File size exceeds the {max_size_bytes // (1024 * 1024)} MB limit")
     content_type = resp.headers.get("content-type", "")
     ext = Path(filename).suffix.lstrip(".").lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
@@ -219,10 +234,16 @@ async def agent_parse_url(
     user_id = await _get_or_create_system_user(db)
 
     try:
-        s3_key, filename, size = await _download_url_to_s3(payload.url, user_id)
+        s3_key, filename, size = await _download_url_to_s3(
+            payload.url,
+            user_id,
+            max_size_bytes=settings.AGENT_MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+        )
     except UnsupportedDownloadedFileType as e:
         logger.warning("Agent: unsupported file from URL", url=payload.url, error=str(e))
         return {"code": -30002, "msg": str(e), "trace_id": _trace_id(), "data": None}
+    except ValueError as e:
+        return {"code": -30001, "msg": str(e), "trace_id": _trace_id(), "data": None}
     except Exception as e:
         logger.error("Agent: failed to download URL", url=payload.url, error=str(e))
         return {"code": -60008, "msg": "Failed to download file from URL", "trace_id": _trace_id(), "data": None}
@@ -314,7 +335,8 @@ async def agent_parse_file(
     await db.commit()
     await db.refresh(task)
 
-    # Auto-dispatch Celery task (file may not be uploaded yet, but worker will retry)
+    # The official Agent contract starts parsing after the signed PUT upload.
+    # The watchdog dispatches this pending task as soon as the object exists.
     config = {
         "backend": backend,
         "output_format": "markdown",
@@ -324,8 +346,6 @@ async def agent_parse_file(
         "enable_table": payload.enable_table,
         "page_ranges": payload.page_range,
     }
-    celery_task_id = dispatch_parse_task(task.id, task.input_s3_key, task.output_s3_prefix, config)
-    task.celery_task_id = celery_task_id
     await db.commit()
 
     return {
@@ -377,7 +397,13 @@ async def agent_parse_result(
             markdown_url = storage_service.generate_download_presigned_url(objects[0]["key"])
 
     if state == "failed":
-        err_code = -60010  # generic parse failure
+        error_text = (task.error_message or "").lower()
+        if "size" in error_text or "mb" in error_text:
+            err_code = -30001
+        elif "page" in error_text:
+            err_code = -30003
+        else:
+            err_code = -60010  # generic parse failure
 
     result_data = {
         "task_id": task.id,

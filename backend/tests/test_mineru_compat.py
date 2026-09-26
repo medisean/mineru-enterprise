@@ -65,8 +65,11 @@ def test_extracts_and_normalizes_mineru_4_zip(tmp_path: Path):
 
     assert not archive.exists()
     assert (output_dir / "report.md").read_text() == "# Report"
+    assert (output_dir / "full.md").read_text() == "# Report"
     assert (output_dir / "report_middle.json").exists()
+    assert (output_dir / "layout.json").exists()
     assert (output_dir / "report_content_list.json").exists()
+    assert (output_dir / "content_list.json").exists()
     assert (output_dir / "images/figure.png").read_bytes() == b"png"
 
 

@@ -21,6 +21,7 @@ from app.services.official_result_exports import (
     render_extra_format_files,
 )
 from app.services.mineru_compat import build_mineru_command, extract_mineru_zip
+from app.services.preview_alignment import build_page_map_file
 
 from app.core.config import settings
 from app.core.schema_compat import try_ensure_sync_schema_compat
@@ -191,6 +192,28 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
             tmp.write(file_bytes)
             tmp_path = tmp.name
 
+        # Enforce the documented page limits for PDF inputs while keeping the
+        # check streaming-friendly. Agent tasks use the lightweight 20-page
+        # limit; precision/official tasks use the 200-page limit.
+        task_username = None
+        with Session() as session:
+            from app.models.models import ParseTask, User
+            task_record = session.get(ParseTask, task_id)
+            if task_record:
+                owner = session.get(User, task_record.user_id)
+                task_username = owner.username if owner else None
+        page_count = _pdf_page_count(tmp_path) if suffix == ".pdf" else None
+        if page_count is not None:
+            page_limit = (
+                settings.AGENT_MAX_PAGE_COUNT
+                if task_username == "agent_system"
+                else settings.OFFICIAL_MAX_PAGE_COUNT
+            )
+            if page_count > page_limit:
+                raise RuntimeError(
+                    f"File page count exceeds the {page_limit}-page limit"
+                )
+
         # Build the MinerU 4.x stateless CLI command with the full Enterprise
         # parameter set. The old 3.x flags are intentionally not emitted.
         backend = config.get("backend") or settings.MINERU_BACKEND
@@ -326,11 +349,18 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
 
             extract_mineru_zip(output_dir, Path(input_s3_key).stem)
 
+            # MinerU's official HTML contract exposes the extracted page as
+            # main.html. The 4.x local CLI returns the common Markdown/JSON
+            # archive, so preserve a stable HTML entry for HTML callers too.
+            if Path(input_s3_key).suffix.lower() in {".html", ".htm"}:
+                shutil.copyfile(tmp_path, os.path.join(output_dir, "main.html"))
+
             update_task_status("processing", progress=80)
             self.update_state(state="PROGRESS", meta={"progress": 80, "message": "Uploading results"})
 
             # Upload all output files to S3
             uploaded_files = []
+            page_map_uploaded = False
             for root, dirs, files in os.walk(output_dir):
                 for fname in files:
                     fpath = os.path.join(root, fname)
@@ -344,6 +374,16 @@ def _run_parse(self, task_id: str, input_s3_key: str, output_s3_prefix: str, con
                         with open(fpath, "r", encoding="utf-8", errors="replace") as f:
                             raw = f.read()
                         converted = convert_html_tables_to_markdown(raw)
+                        if not page_map_uploaded:
+                            page_map_path = build_page_map_file(output_dir, converted)
+                            if page_map_path:
+                                storage_service.upload_bytes(
+                                    f"{output_s3_prefix}/_preview/page_map.json",
+                                    Path(page_map_path).read_bytes(),
+                                    "application/json",
+                                )
+                                uploaded_files.append(f"{output_s3_prefix}/_preview/page_map.json")
+                                page_map_uploaded = True
                         for extra_path, extra_content_type in render_extra_format_files(converted, fpath, extra_formats):
                             rel = os.path.relpath(extra_path, output_dir)
                             extra_s3_key = f"{output_s3_prefix}/{rel}"
@@ -460,14 +500,17 @@ def _parse_bool_option(value, default: bool) -> bool:
 def _get_office_extension(s3_key: str) -> str | None:
     """Return the office extension if the file is an Office document, else None."""
     ext = s3_key.rsplit(".", 1)[-1].lower() if "." in s3_key else ""
-    office_exts = {"pptx", "docx", "xlsx"}
+    office_exts = {"doc", "docx", "ppt", "pptx", "xls", "xlsx"}
     return ext if ext in office_exts else None
 
 
 def _office_pdf_filter(office_ext: str | None) -> str:
     filters = {
+        "doc": "pdf:writer_pdf_Export",
         "pptx": "pdf:impress_pdf_Export",
+        "ppt": "pdf:impress_pdf_Export",
         "docx": "pdf:writer_pdf_Export",
+        "xls": "pdf:calc_pdf_Export",
         "xlsx": "pdf:calc_pdf_Export",
     }
     return filters.get((office_ext or "").lower(), "pdf")
@@ -552,6 +595,31 @@ def _convert_office_to_pdf(input_path: str, office_ext: str | None = None) -> st
 def _first_log_line(value: str, limit: int = 240) -> str:
     line = (value or "").strip().splitlines()
     return (line[0] if line else "")[:limit]
+
+
+def _pdf_page_count(input_path: str) -> int | None:
+    """Read a PDF page count without loading the document into Python memory."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["pdfinfo", input_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        if line.lower().startswith("pages:"):
+            try:
+                return int(line.split(":", 1)[1].strip())
+            except ValueError:
+                return None
+    return None
 
 
 @celery_app.task(

@@ -118,6 +118,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/1"
       CELERY_RESULT_BACKEND: "redis://redis:6379/2"
       FORCE_GPU_QUEUE: "${FORCE_GPU_QUEUE:-false}"
+      S3_EXTERNAL_URL: "${S3_EXTERNAL_URL:-http://localhost:9000}"
     ports:
       - "8000:8000"
     depends_on:

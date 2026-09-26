@@ -140,16 +140,22 @@ class Settings(BaseSettings):
     TASK_PENDING_STALLED_AFTER_SECONDS: int = 120
     TASK_STALLED_AFTER_SECONDS: int = 300
     TASK_WATCHDOG_INTERVAL_SECONDS: int = 60
+    TASK_UPLOAD_SCAN_INTERVAL_SECONDS: int = 5
     TASK_MAX_PARSE_ATTEMPTS: int = 3
     MINERU_PARSE_TIMEOUT_SECONDS: int = 1200
 
     # ── File Limits ───────────────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 50
     MAX_BATCH_FILES: int = 100
+    OFFICIAL_MAX_UPLOAD_SIZE_MB: int = 200
+    OFFICIAL_MAX_PAGE_COUNT: int = 200
+    OFFICIAL_MAX_BATCH_FILES: int = 50
+    AGENT_MAX_UPLOAD_SIZE_MB: int = 10
+    AGENT_MAX_PAGE_COUNT: int = 20
     ALLOWED_EXTENSIONS: List[str] = [
         "pdf",
         "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff",
-        "docx", "pptx", "xlsx",
+        "doc", "docx", "ppt", "pptx", "xls", "xlsx", "html",
     ]
 
     # ── MinerU Parse Options ─────────────────────────────────────────────

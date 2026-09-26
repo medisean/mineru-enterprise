@@ -2,6 +2,7 @@
 File upload & parse task endpoints.
 """
 import io
+import json
 import re
 import uuid
 import zipfile
@@ -24,6 +25,7 @@ from app.schemas.schemas import (
 from app.services.storage import storage_service
 from app.services.file_validation import validate_file_magic
 from app.services.official_result_exports import FULL_ZIP_NAME, ZIP_EXPORT_DIR
+from app.services.preview_alignment import build_page_markers
 from app.workers.parse_worker import dispatch_parse_task
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -199,7 +201,94 @@ def _result_image_urls(output_s3_prefix: str, objects: list[dict]) -> dict[str, 
     return image_urls
 
 
-def _decode_preview_bytes(raw: bytes, fmt: str, output_s3_prefix: str, objects: list[dict]) -> str:
+def _inject_page_markers(raw: bytes, source_offset: int, page_markers: list[dict]) -> bytes:
+    """Add invisible Markdown page markers without changing S3 byte offsets."""
+    if not raw or not page_markers:
+        return raw
+    end_offset = source_offset + len(raw)
+    inserts = [
+        marker for marker in page_markers
+        if source_offset <= int(marker.get("offset", -1)) < end_offset
+    ]
+    if not inserts:
+        return raw
+
+    chunks: list[bytes] = []
+    cursor = 0
+    for marker in sorted(inserts, key=lambda item: int(item["offset"])):
+        relative = int(marker["offset"]) - source_offset
+        if relative < cursor or relative > len(raw):
+            continue
+        chunks.append(raw[cursor:relative])
+        chunks.append(f"\n\n<!-- docvortex-page: {int(marker['page'])} -->\n\n".encode("utf-8"))
+        cursor = relative
+    chunks.append(raw[cursor:])
+    return b"".join(chunks)
+
+
+def _find_preview_page_markers(
+    output_s3_prefix: str,
+    objects: list[dict],
+    preview_key: str,
+) -> list[dict[str, int]]:
+    """Read the persisted map, with a compatibility fallback for old tasks."""
+    map_objects = [
+        obj for obj in objects
+        if obj["key"].lower().endswith("/_preview/page_map.json")
+    ]
+    if map_objects:
+        try:
+            data = json.loads(storage_service.download_bytes(map_objects[0]["key"]))
+            markers = data.get("markers", [])
+            if isinstance(markers, list):
+                return markers
+        except (ValueError, TypeError, KeyError):
+            pass
+
+    preview_dir = preview_key.rsplit("/", 1)[0]
+    content_candidates = sorted(
+        (
+            obj for obj in objects
+            if obj["key"].rsplit("/", 1)[0] == preview_dir
+            and (
+                obj["key"].lower().endswith("_content_list.json")
+                or obj["key"].lower().endswith("/content_list.json")
+            )
+        ),
+        key=lambda obj: obj["key"],
+    )
+    # MinerU 4.x can leave the Markdown and content list in a nested directory.
+    if not content_candidates:
+        content_candidates = sorted(
+            (
+                obj for obj in objects
+                if obj["key"].lower().endswith("_content_list.json")
+                or obj["key"].lower().endswith("/content_list.json")
+            ),
+            key=lambda obj: obj["key"],
+        )
+    if not content_candidates:
+        return []
+
+    try:
+        markdown_text = storage_service.download_bytes(preview_key).decode("utf-8", errors="replace")
+        content_list = json.loads(storage_service.download_bytes(content_candidates[0]["key"]))
+        return build_page_markers(markdown_text, content_list)
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+
+
+def _decode_preview_bytes(
+    raw: bytes,
+    fmt: str,
+    output_s3_prefix: str,
+    objects: list[dict],
+    *,
+    source_offset: int = 0,
+    page_markers: list[dict] | None = None,
+) -> str:
+    if fmt == "markdown" and page_markers:
+        raw = _inject_page_markers(raw, source_offset, page_markers)
     text = raw.decode("utf-8", errors="replace")
     if fmt in {"markdown", "html"}:
         if fmt == "markdown":
@@ -862,6 +951,7 @@ async def get_task_preview(
     task_id: str,
     limit: int = Query(DEFAULT_PREVIEW_BYTES, ge=1, le=MAX_PREVIEW_BYTES),
     preferred_format: Optional[str] = Query(None, pattern="^(markdown|html|json|raw)?$"),
+    with_page_markers: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -889,8 +979,19 @@ async def get_task_preview(
 
     key = preview_obj["key"]
     size = int(preview_obj.get("size") or storage_service.get_object_size(key))
+    page_markers = (
+        _find_preview_page_markers(task.output_s3_prefix, objects, key)
+        if primary_format == "markdown" and with_page_markers
+        else []
+    )
     raw = storage_service.read_range_bytes(key, 0, min(limit, size)) if size else b""
-    text = _decode_preview_bytes(raw, primary_format, task.output_s3_prefix, objects)
+    text = _decode_preview_bytes(
+        raw,
+        primary_format,
+        task.output_s3_prefix,
+        objects,
+        page_markers=page_markers,
+    )
     next_offset = len(raw) if len(raw) < size else None
     markdown_content = text if primary_format in {"markdown", "html"} else None
     json_content = text if primary_format == "json" else None
@@ -904,6 +1005,7 @@ async def get_task_preview(
         "offset": 0,
         "next_offset": next_offset,
         "truncated": next_offset is not None,
+        "page_markers": page_markers,
     }
 
 
@@ -913,6 +1015,7 @@ async def get_task_preview_chunk(
     offset: int = Query(0, ge=0),
     limit: int = Query(DEFAULT_PREVIEW_BYTES, ge=1, le=MAX_PREVIEW_BYTES),
     preferred_format: Optional[str] = Query(None, pattern="^(markdown|html|json|raw)?$"),
+    with_page_markers: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -930,11 +1033,23 @@ async def get_task_preview_chunk(
 
     key = preview_obj["key"]
     size = int(preview_obj.get("size") or storage_service.get_object_size(key))
+    page_markers = (
+        _find_preview_page_markers(task.output_s3_prefix, objects, key)
+        if primary_format == "markdown" and with_page_markers
+        else []
+    )
     if offset >= size:
         raw = b""
     else:
         raw = storage_service.read_range_bytes(key, offset, min(limit, size - offset))
-    text = _decode_preview_bytes(raw, primary_format, task.output_s3_prefix, objects)
+    text = _decode_preview_bytes(
+        raw,
+        primary_format,
+        task.output_s3_prefix,
+        objects,
+        source_offset=offset,
+        page_markers=page_markers,
+    )
     next_offset = offset + len(raw) if offset + len(raw) < size else None
     return {
         "format": primary_format,
@@ -944,4 +1059,5 @@ async def get_task_preview_chunk(
         "offset": offset,
         "next_offset": next_offset,
         "truncated": next_offset is not None,
+        "page_markers": page_markers,
     }

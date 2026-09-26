@@ -15,9 +15,11 @@ MINERU_TIER_ALIASES = {
     "hybrid": "standard",
     "hybrid-engine": "standard",
     "hybrid-auto-engine": "standard",
+    "mineru-html": "flash",
 }
 MINERU_TIERS = {"flash", "basic", "standard", "advanced"}
-OFFICE_EXTENSIONS = {".docx", ".pptx", ".xlsx"}
+OFFICE_EXTENSIONS = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"}
+HTML_EXTENSIONS = {".html", ".htm"}
 
 
 def normalize_mineru_tier(backend: str, default_backend: str = "pipeline") -> str:
@@ -62,7 +64,7 @@ def build_mineru_command(
     # MinerU 4.x routes Office documents through its Flash tier.  The legacy
     # Enterprise API defaults to pipeline/basic, so normalize that default
     # here instead of making every caller know this file-type restriction.
-    if Path(input_path).suffix.lower() in OFFICE_EXTENSIONS:
+    if Path(input_path).suffix.lower() in (OFFICE_EXTENSIONS | HTML_EXTENSIONS):
         tier = "flash"
     ocr_mode = options.get("ocr-mode", options.get("ocr_mode"))
     if ocr_mode is None:
@@ -132,3 +134,18 @@ def extract_mineru_zip(output_dir: str, source_stem: str) -> None:
         new_path = root / new_name
         if old_path.exists() and not new_path.exists():
             old_path.rename(new_path)
+
+    # Keep the official API filenames alongside the Enterprise-friendly stem
+    # names. Existing clients can continue using ``report.md`` while clients
+    # following the official contract can look for ``full.md``/``layout.json``.
+    aliases = {
+        f"{source_stem}.md": "full.md",
+        f"{source_stem}_middle.json": "layout.json",
+        f"{source_stem}_content_list.json": "content_list.json",
+        f"{source_stem}_model.json": "model.json",
+    }
+    for source_name, alias_name in aliases.items():
+        source_path = root / source_name
+        alias_path = root / alias_name
+        if source_path.exists() and not alias_path.exists():
+            alias_path.write_bytes(source_path.read_bytes())

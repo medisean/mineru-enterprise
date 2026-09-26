@@ -30,6 +30,8 @@ MAGIC_SIGNATURES: list[tuple[int, bytes, set[str]]] = [
     # TIFF: little-endian or big-endian header
     (0, b"II*\x00", {"tiff"}),
     (0, b"MM\x00*", {"tiff"}),
+    # Legacy Microsoft Office OLE compound documents (DOC/PPT/XLS).
+    (0, b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", {"doc", "ppt", "xls"}),
     # ZIP-based formats (DOCX, PPTX, XLSX are ZIP archives)
     # PK\x03\x04 = ZIP local file header
     (0, b"PK\x03\x04", {"docx", "pptx", "xlsx"}),
@@ -50,6 +52,10 @@ def validate_file_magic(head_bytes: bytes, claimed_extension: str) -> bool:
     if not head_bytes:
         logger.warning("Empty head bytes, skipping magic validation", ext=claimed_extension)
         return True
+
+    if claimed_extension in {"html", "htm"}:
+        html_head = head_bytes.decode("utf-8", errors="ignore").lstrip("\ufeff \t\r\n").lower()
+        return "<!doctype html" in html_head or "<html" in html_head
 
     # Check known magic signatures
     matched_extensions: set[str] = set()

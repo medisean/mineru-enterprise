@@ -56,6 +56,10 @@ CONTENT_TYPE_TO_EXTENSION = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/msword": "doc",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.ms-excel": "xls",
+    "text/html": "html",
 }
 CONTENT_TYPE_BY_EXTENSION = {
     "pdf": "application/pdf",
@@ -70,6 +74,10 @@ CONTENT_TYPE_BY_EXTENSION = {
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "doc": "application/msword",
+    "ppt": "application/vnd.ms-powerpoint",
+    "xls": "application/vnd.ms-excel",
+    "html": "text/html",
 }
 
 
@@ -134,6 +142,12 @@ def _map_status(status: TaskStatus, progress: int = 0) -> str:
 def _build_extract_result(task: ParseTask) -> ExtractTaskResultData:
     """Build ExtractTaskResultData from a ParseTask."""
     state = _map_status(task.status, task.progress)
+    if (
+        task.status == TaskStatus.PENDING
+        and task.file_size_bytes == 0
+        and not storage_service.object_exists(task.input_s3_key)
+    ):
+        state = "waiting-file"
     full_zip_url = None
     extract_progress = None
 
@@ -239,7 +253,12 @@ def _infer_supported_extension(filename: str, content_type: str, data: bytes) ->
     return ""
 
 
-async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
+async def _download_url_to_s3(
+    url: str,
+    user_id: str,
+    *,
+    max_size_bytes: int | None = None,
+) -> tuple[str, str, int]:
     """Download a file from URL and upload to S3. Returns (s3_key, filename, size)."""
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         resp = await client.get(url)
@@ -258,6 +277,8 @@ async def _download_url_to_s3(url: str, user_id: str) -> tuple[str, str, int]:
             filename = f"{filename}.{ext}"
 
     data = resp.content
+    if max_size_bytes is not None and len(data) > max_size_bytes:
+        raise ValueError(f"File size exceeds the {max_size_bytes // (1024 * 1024)} MB limit")
     content_type = resp.headers.get("content-type", "")
     ext = _infer_supported_extension(filename, content_type, data)
     if not ext:
@@ -298,10 +319,16 @@ async def extract_task(
         return callback_error
 
     try:
-        s3_key, filename, size = await _download_url_to_s3(payload.url, current_user.id)
+        s3_key, filename, size = await _download_url_to_s3(
+            payload.url,
+            current_user.id,
+            max_size_bytes=settings.OFFICIAL_MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+        )
     except UnsupportedDownloadedFileType as e:
         logger.warning("Unsupported file from URL", url=payload.url, error=str(e))
         return {"code": -60002, "msg": str(e), "trace_id": _trace_id(), "data": None}
+    except ValueError as e:
+        return {"code": -60005, "msg": str(e), "trace_id": _trace_id(), "data": None}
     except Exception as e:
         logger.error("Failed to download file from URL", url=payload.url, error=str(e))
         return {"code": -60008, "msg": "Failed to download file from URL", "trace_id": _trace_id(), "data": None}
@@ -402,8 +429,8 @@ async def batch_file_urls(
     if callback_error:
         return callback_error
 
-    if len(payload.files) > settings.MAX_BATCH_FILES:
-        return {"code": -500, "msg": f"Maximum {settings.MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
+    if len(payload.files) > settings.OFFICIAL_MAX_BATCH_FILES:
+        return {"code": -500, "msg": f"Maximum {settings.OFFICIAL_MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
     batch_id = str(uuid.uuid4())
     backend = _map_model_version(payload.model_version)
@@ -444,21 +471,9 @@ async def batch_file_urls(
 
     await db.commit()
 
-    for task, is_ocr in created_tasks:
-        await db.refresh(task)
-        config = {
-            "backend": backend,
-            "output_format": task.output_format,
-            "language": task.language,
-            "is_ocr": is_ocr,
-            "enable_formula": task.enable_formula,
-            "enable_table": task.enable_table,
-            "page_ranges": task.page_ranges,
-            "extra_formats": normalize_extra_formats(payload.extra_formats),
-        }
-        celery_id = _dispatch_celery_task(task, config)
-        task.celery_task_id = celery_id
-    await db.commit()
+    # The official contract starts parsing only after each signed PUT has
+    # completed. The watchdog scans these pending tasks and dispatches them
+    # as soon as their S3 object becomes visible.
 
     return {
         "code": 0,
@@ -488,8 +503,8 @@ async def batch_url_extract(
     if callback_error:
         return callback_error
 
-    if len(payload.files) > settings.MAX_BATCH_FILES:
-        return {"code": -500, "msg": f"Maximum {settings.MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
+    if len(payload.files) > settings.OFFICIAL_MAX_BATCH_FILES:
+        return {"code": -500, "msg": f"Maximum {settings.OFFICIAL_MAX_BATCH_FILES} files per batch", "trace_id": _trace_id(), "data": None}
 
     batch_id = str(uuid.uuid4())
     backend = _map_model_version(payload.model_version)
@@ -498,7 +513,11 @@ async def batch_url_extract(
 
     for f in payload.files:
         try:
-            s3_key, filename, size = await _download_url_to_s3(f.url, current_user.id)
+            s3_key, filename, size = await _download_url_to_s3(
+                f.url,
+                current_user.id,
+                max_size_bytes=settings.OFFICIAL_MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+            )
         except UnsupportedDownloadedFileType as e:
             logger.warning("Batch: unsupported URL file", url=f.url, error=str(e))
             continue

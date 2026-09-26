@@ -37,7 +37,7 @@ router = APIRouter(tags=["MinerU Official API"])
 SUPPORTED_EXTENSIONS = {
     "pdf",
     "png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff",
-    "docx", "pptx", "xlsx",
+    "doc", "docx", "ppt", "pptx", "xls", "xlsx", "html",
 }
 IMAGE_EXTENSIONS = {"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"}
 TASK_PENDING = "pending"
@@ -180,8 +180,8 @@ async def _save_upload_as_task(
 
     content = await upload.read()
     await upload.close()
-    if len(content) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"File too large (max {settings.MAX_UPLOAD_SIZE_MB} MB)")
+    if len(content) > settings.OFFICIAL_MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"File too large (max {settings.OFFICIAL_MAX_UPLOAD_SIZE_MB} MB)")
     if not validate_file_magic(content[:32], ext):
         raise HTTPException(status_code=400, detail=f"File content does not match the '.{ext}' extension")
 

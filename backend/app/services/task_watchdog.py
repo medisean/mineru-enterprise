@@ -11,7 +11,8 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.models import ParseTask, TaskStatus
+from app.models.models import ParseTask, TaskStatus, User
+from app.services.storage import storage_service
 from app.workers.parse_worker import dispatch_parse_task
 
 logger = structlog.get_logger(__name__)
@@ -79,14 +80,48 @@ async def redispatch_stale_pending_tasks_once() -> int:
     cutoff_seconds = settings.TASK_PENDING_STALLED_AFTER_SECONDS
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(ParseTask).where(TaskStatus.PENDING == ParseTask.status)
+            select(ParseTask, User.username)
+            .join(User, User.id == ParseTask.user_id)
+            .where(TaskStatus.PENDING == ParseTask.status)
             .with_for_update(skip_locked=True)
         )
+        ready_uploads = []
         stale = []
-        for task in result.scalars().all():
+        rejected_uploads = []
+        for task, username in result.all():
+            # Presigned-upload APIs create a pending task before the client
+            # PUTs the object. Do not dispatch it until the object is visible.
+            if task.file_size_bytes == 0 and not task.celery_task_id:
+                if storage_service.object_exists(task.input_s3_key):
+                    size = storage_service.get_object_size(task.input_s3_key)
+                    max_size = (
+                        settings.AGENT_MAX_UPLOAD_SIZE_MB
+                        if username == "agent_system"
+                        else settings.OFFICIAL_MAX_UPLOAD_SIZE_MB
+                    ) * 1024 * 1024
+                    if size > max_size:
+                        task.status = TaskStatus.FAILED
+                        task.error_message = f"File size exceeds the {max_size // (1024 * 1024)} MB limit"
+                        task.completed_at = datetime.now(timezone.utc)
+                        task.last_heartbeat_at = None
+                        rejected_uploads.append(task)
+                    else:
+                        task.file_size_bytes = size
+                        ready_uploads.append(task)
+                    continue
+                # Keep waiting-file tasks pending until the client finishes
+                # the signed upload; do not turn an unuploaded object into a
+                # parse failure just because the pending timeout elapsed.
+                continue
             marker = task.last_heartbeat_at or task.created_at
             if _seconds_since(marker) > cutoff_seconds:
                 stale.append(task)
+
+        now = datetime.now(timezone.utc)
+        for task in ready_uploads:
+            task.celery_task_id = _dispatch_existing_task(task)
+            task.error_message = None
+            task.last_heartbeat_at = now
 
         for task in stale:
             if not _has_parse_attempts_remaining(task):
@@ -101,10 +136,15 @@ async def redispatch_stale_pending_tasks_once() -> int:
             task.error_message = None
             task.last_heartbeat_at = datetime.now(timezone.utc)
 
-        if stale:
+        if ready_uploads or rejected_uploads or stale:
             await db.commit()
-            logger.warning("Redispatched stale pending tasks", count=len(stale))
-        return len(stale)
+            if ready_uploads:
+                logger.info("Dispatched uploaded pending tasks", count=len(ready_uploads))
+            if stale:
+                logger.warning("Redispatched stale pending tasks", count=len(stale))
+            if rejected_uploads:
+                logger.warning("Rejected oversized pending uploads", count=len(rejected_uploads))
+        return len(ready_uploads) + len(rejected_uploads) + len(stale)
 
 
 async def watchdog_loop(stop_event: asyncio.Event) -> None:
@@ -125,6 +165,12 @@ async def watchdog_loop(stop_event: asyncio.Event) -> None:
         except Exception as exc:
             logger.warning("Task watchdog scan failed", error=str(exc))
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=settings.TASK_WATCHDOG_INTERVAL_SECONDS)
+            await asyncio.wait_for(
+                stop_event.wait(),
+                timeout=min(
+                    settings.TASK_WATCHDOG_INTERVAL_SECONDS,
+                    settings.TASK_UPLOAD_SCAN_INTERVAL_SECONDS,
+                ),
+            )
         except asyncio.TimeoutError:
             pass
