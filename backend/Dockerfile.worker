@@ -38,7 +38,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "
         python -m pip install --no-cache-dir torch==${TORCH_VERSION} torchvision; \
     fi
 
-# ── Install MinerU with [pipeline] extra (includes transformers, albumentations etc.) ──
+# ── Install MinerU with [torch] extra for the CPU worker ────────────────────
 COPY requirements.txt requirements-worker.txt ./
 RUN python -m pip install --no-cache-dir -r requirements-worker.txt
 

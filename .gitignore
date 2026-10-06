@@ -27,6 +27,7 @@ venv/
 
 # OS
 .DS_Store
+._*
 Thumbs.db
 
 # Docker volumes

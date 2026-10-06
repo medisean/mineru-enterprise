@@ -1,425 +1,113 @@
 # MinerU Enterprise
 
-企业级 MinerU 文档解析平台。在原版 MinerU 的解析内核基础上，补齐了企业化所需的全套能力：
+基于 [MinerU](https://github.com/opendatalab/MinerU) 解析内核的自托管文档处理平台。项目将解析能力接入账号、任务队列、对象存储和管理界面，适合需要多人使用、留存结果并自行管理文件的场景。本项目由社区独立维护，不属于 MinerU 官方仓库。
 
-- **官方输入格式对齐**：PDF / 图片（PNG / JPEG / JP2 / WebP / GIF / BMP / JPG / TIFF）/ DOCX / PPTX / XLSX
-- **丰富解析参数**：OCR 开关、公式识别、表格识别、页码范围、10+ 语言、3 种解析引擎
-- **多种输出格式**：Markdown / JSON / DOCX / HTML / LaTeX
-- **在线预览**：Markdown 渲染预览 + 一键复制 + 文件下载
-- **批量处理**：支持批量上传、批量创建任务（单次最多 100 个）
-- **单点登录（SSO）**：OIDC / LDAP / 企业微信 / 钉钉
-- **文件直传 S3**：AWS S3 / MinIO / 阿里云 OSS / 腾讯云 COS
-- **异步任务队列**：Celery + Redis，WebSocket 实时进度推送
-- **多用户 / 组织管理**：账号、角色、配额
-- **一键 Docker 部署**：支持 CPU 和 GPU 两种模式
+![上传、解析和预览流程示意](docs/assets/workflow.gif)
 
----
+> GIF 为根据当前界面绘制的流程示意，使用虚构文件；实际运行画面与任务耗时取决于部署环境。
 
-## 功能对比（vs MinerU 官方）
+## 当前能力
 
-| 能力 | MinerU 官方 | MinerU Enterprise |
-|------|:-----------:|:-----------------:|
-| 文件格式 | PDF/图片/DOCX/PPTX/XLSX | 同官方，全部对齐 |
-| 解析引擎 | flash / basic / standard / advanced | 同官方；兼容旧 backend 名称 |
-| 解析参数 | OCR / 公式 / 表格 / 页码范围 / 语言 | 同官方，全部对齐 |
-| 输出格式 | Markdown / JSON / DOCX / HTML / LaTeX | 同官方 |
-| 批量处理 | 最多 100 个 | 同官方 |
-| 在线预览 | CDN Markdown | 自托管 Markdown/HTML/JSON 预览 |
-| 认证方式 | Token | **OIDC / LDAP / 企微 / 钉钉 + 本地** |
-| 文件存储 | 官方 CDN | **S3 / MinIO / OSS / COS 自托管** |
-| 多用户 | 无 | **组织 + 角色 + 配额** |
-| 部署方式 | 云端 | **Docker 自托管 + Nginx** |
+- **解析任务**：PDF、常见图片和 Office 文件上传，Celery + Redis 异步处理，支持批量创建、状态查询、取消、重试和结果下载。
+- **解析内核**：CPU 与 GPU Worker 均固定依赖 MinerU **4.0.9**。后端接受 `flash`、`basic`、`standard`、`advanced`，并映射旧名称 `pipeline`、`hybrid`、`vlm`。
+- **结果查看**：任务详情提供源文件与 Markdown 对照预览、复制和下载；后台还提供任务记录与统计。
+- **身份与存储**：本地账号、OIDC、LDAP、企业微信、钉钉；预签名 URL 直传 S3 兼容存储，可使用 MinIO。
+- **部署**：Docker Compose 编排 Next.js、FastAPI、PostgreSQL、Redis、MinIO、Nginx 和 Worker；可选 NVIDIA GPU 服务。
 
----
+## 与官方 MinerU 4.0.9 对比
 
-## 架构
+这里的“官方”指 [opendatalab/MinerU 4.0.9 开源版](https://github.com/opendatalab/MinerU/tree/mineru-4.0.9-released)，不是 MinerU 云服务。官方 4.0 本身已有 WebUI、自托管 V1 API、批量解析和 Docker 部署；本项目侧重多人任务管理与对象存储集成。对比依据：[官方 4.0.9 README](https://github.com/opendatalab/MinerU/blob/mineru-4.0.9-released/README.md)、[4.0.9 发布说明](https://github.com/opendatalab/MinerU/releases/tag/mineru-4.0.9-released)。
 
-```
-用户浏览器
-    │
-    ▼
-Next.js 前端 (3000)
-    │
-    ▼
-FastAPI 后端 (8000)
-    │
-    ├─→ PostgreSQL (元数据/用户/任务)
-    ├─→ Redis (Celery 队列 + 缓存)
-    ├─→ S3/MinIO (文件存储)
-    └─→ Celery Worker
-            ├─→ CPU Worker (MINERU_DEVICE=cpu)
-            └─→ GPU Worker (MINERU_DEVICE=cuda, 可选)
-                    └─→ MinerU 解析引擎
-```
+| 能力 | 官方 MinerU 4.0.9 | 本项目 |
+|---|---|---|
+| 解析内核 | 官方 4.0.9 | Worker 使用同版本的 `mineru-kit parse` |
+| 输入 | PDF、图片、Office、OpenDocument、RTF、EPUB、OFD、HTML/MHTML、CSV/TSV 等 | Web 上传：PDF、图片、DOCX、PPTX、XLSX；后端还接受旧 Office 格式和 HTML。MHTML、EPUB、OFD、CSV/TSV 等尚未接入上传入口 |
+| 解析档位 | `flash` / `basic` / `standard` / `advanced` | 后端接受四档；当前 Web 界面提供 Pipeline（映射 `basic`）和 VLM（映射 `advanced`）。Office/HTML 在 Worker 中使用 `flash` |
+| 输出 | 统一文档模型，按接口导出 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、结构化内容等 | 任务保存 MinerU 解析结果并提供 Markdown/JSON；可从 Markdown 生成简易 HTML、DOCX、LaTeX，保真度不等同于官方对应渲染器 |
+| WebUI | 官方 Gradio WebUI | Next.js 上传、任务列表、源文件与结果对照预览、管理页面 |
+| API | 官方 `/v1/*` 解析服务、SDK、Router | 自有 `/api/v1/*`、`/api/v4/extract/*` 和旧式 `/tasks`、`/file_parse` 兼容入口；**尚不实现官方 4.0 的 `/v1/*` 协议** |
+| 本地文档库 | 搜索、缓存、页/块定位与继续阅读 | 尚未接入官方 doclib；以任务和结果文件为中心 |
+| 多人协作 | 官方开源 CLI、服务和 WebUI | 账号、角色、管理后台、API Token、可选 SSO 与组织数据模型 |
+| 任务与存储 | 官方无状态批处理、V1 作业与本地文档库 | Celery 队列、任务历史、WebSocket 进度、S3 兼容对象存储 |
+| 部署 | 官方提供本地运行与 Docker 方案 | Compose 部署完整应用栈，可选 CPU/GPU Worker |
 
-### 核心数据流
-
-```
-浏览器 → getUploadUrl(API) → 预签名 URL
-浏览器 → PUT 直传 S3（绕过 API，减少服务器带宽）
-浏览器 → createTask(API) → Celery 队列
-Worker → 从 S3 下载 → mineru CLI（含全部参数）→ 结果上传 S3
-浏览器 ← WebSocket 实时进度 ← Worker 更新 DB
-浏览器 → getPreview(API) → 在线 Markdown/HTML 渲染
-```
-
----
+**参数边界**：当前 Worker 会将档位、OCR 模式、PDF 页码范围和图像分析选项传给 MinerU 4.0 CLI。前端和 API 仍接收语言、公式、表格开关，但这些字段目前没有映射到 4.0 CLI 的独立参数；请勿将它们视为已生效的解析控制项。
 
 ## 快速开始
 
 ### 1. 克隆并配置
 
 ```bash
-git clone https://github.com/your-org/mineru-enterprise
+git clone https://github.com/medisean/mineru-enterprise.git
 cd mineru-enterprise
 cp .env.example .env
-# 编辑 .env 填入实际配置
 ```
 
-### 2. 启动（本地开发，含 MinIO）
-
-```bash
-bash scripts/start.sh dev
-```
-
-访问：
-- 前端：http://localhost:3000
-- API 文档：http://localhost:8000/api/docs
-- MinIO 控制台：http://localhost:9001
-
-### 3. 生产部署（含 Nginx + HTTPS）
-
-```bash
-# 将 SSL 证书放到 docker/ssl/
-bash scripts/start.sh prod
-```
-
-### 4. GPU 模式（远端部署）
-
-GPU 模式需要服务器已安装 [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)。
-
-```bash
-bash scripts/start.sh gpu
-```
-
-GPU 模式会启动常驻 `mineru-api-gpu` 和 GPU Worker。生产 `prod` 模式会禁用 CPU Worker，所有解析任务进入 GPU 队列。
-
-#### 工作原理
-
-| 组件 | CPU 模式 (`dev`) | GPU 模式 (`gpu`) |
-|------|:---:|:---:|
-| Worker 镜像 | `Dockerfile.worker` (python:3.11-slim) | `Dockerfile.worker.gpu` (nvidia/cuda:12.4) |
-| PyTorch | CPU-only wheel | CUDA 12.4 wheel |
-| `MINERU_DEVICE` | `cpu` | `cuda` |
-| GPU 设备 | 无 | nvidia GPU passthrough |
-
-#### 配置项
+编辑 `.env`，至少更换 `SECRET_KEY`、PostgreSQL 和 MinIO 的默认口令，并按部署环境配置对外地址。模型文件不打入镜像；设置 `MINERU_MODELS_HOST_PATH` 指向主机上的持久目录，例如：
 
 ```env
-MINERU_DEVICE=cpu           # cpu | cuda | mps（默认 cpu，GPU 模式自动设为 cuda）
-NVIDIA_VISIBLE_DEVICES=all  # 指定可见 GPU，如 "0" 或 "0,1"
-GPU_WORKER_DEVICES=         # 可选：指定 GPU worker 使用哪些卡，如 "0,1"；为空则使用所有可见卡
-GPU_WORKER_CONCURRENCY=1    # 每张 GPU 的 Celery 并发数，默认 1
+MINERU_MODELS_HOST_PATH=/data/mineru-models
 ```
 
-GPU worker 启动时会按 GPU 卡号启动多个 Celery worker：每张卡 1 个 worker，每个 worker 的并发由 `GPU_WORKER_CONCURRENCY` 控制。
+该目录会挂载为容器内的 `/opt/mineru-models`。在外接硬盘部署时，可填入外接盘上的**绝对路径**。模型下载和校验均在这个挂载目录进行。
 
-> 本地开发默认使用 CPU 模式，无需 GPU 驱动。
-
-### 5. 单独构建服务镜像
-
-项目内置 `scripts/build-images.sh`，可以按服务独立打镜像，也可以一次构建全部业务镜像。
+### 2. 构建并启动
 
 ```bash
-# 默认镜像名：
-# mineru-enterprise/api:latest
-# mineru-enterprise/web:latest
-# mineru-enterprise/worker:latest
-# mineru-enterprise/worker-gpu:latest
-# mineru-enterprise/nginx:latest
-
-bash scripts/build-images.sh api
-bash scripts/build-images.sh web
-bash scripts/build-images.sh worker
-bash scripts/build-images.sh worker-gpu
-bash scripts/build-images.sh nginx
-bash scripts/build-images.sh cpu     # api + web + CPU worker + nginx
-bash scripts/build-images.sh all     # api + web + CPU worker + GPU worker + nginx
+docker compose --profile minio --profile proxy up -d --build
 ```
 
-自定义仓库、版本号、平台和推送：
+访问 `http://localhost`。前端直连端口为 `3000`，API 直连端口为 `8000`，MinIO 控制台为 `9001`。本地开发如需 FastAPI 文档，可在 `.env` 中设 `DEBUG=true` 后重启 API，再访问 `http://localhost/api/docs`。
+
+也可使用 `bash scripts/start.sh dev`；GPU 服务器使用 `bash scripts/start.sh gpu`，需 NVIDIA 驱动和 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)。
+
+### 3. 准备本地模型
+
+Worker 默认从挂载目录读取模型（`MINERU_MODEL_SOURCE=local`）。首次解析前，下载适合所选档位的模型：
 
 ```bash
-IMAGE_REPOSITORY=registry.example.com/mineru \
-IMAGE_TAG=v1.0.0 \
-PLATFORM=linux/amd64 \
-PUSH=true \
-bash scripts/build-images.sh all
+# CPU Basic：ONNX 小模型
+docker compose --profile minio --profile proxy run --rm worker \
+  mineru-kit models download --tier basic --small-backend onnx --source modelscope
+
+# 本地 llama.cpp VLM：供 Standard / Advanced 使用
+docker compose --profile minio --profile proxy run --rm worker \
+  mineru-kit models download MinerU2.5-Pro-2605-1.2B-GGUF --source modelscope
 ```
 
-构建时可以按服务切换基础镜像和依赖源：
+模型来源也可按官方 [模型配置文档](https://github.com/opendatalab/MinerU/blob/mineru-4.0.9-released/docs/en/usage/model_source.md) 选择 Hugging Face。GPU 部署需要按所用推理引擎准备对应权重；以上 GGUF 示例针对本地 llama.cpp。
 
-```bash
-# API: Ubuntu 基础镜像、Ubuntu apt 源、pip 源
-API_BASE_IMAGE=registry.example.com/library/ubuntu:22.04 \
-API_UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
-PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-bash scripts/build-images.sh api
+### 4. 使用
 
-# Web: Node 基础镜像、Alpine 源、npm 源
-NODE_BASE_IMAGE=registry.example.com/library/node:20-alpine \
-ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
-NPM_REGISTRY=https://registry.npmmirror.com \
-bash scripts/build-images.sh web
+在网页注册或登录，上传文件并选择解析引擎；任务完成后进入详情页查看原文、Markdown 和下载结果。Web 界面单次最多选择 100 个文件，单文件上传上限默认 50 MB；实际解析还受页数、模型、硬件和服务配置限制。
 
-# CPU Worker: 默认只走 pip 源；如需单独 PyTorch wheel 源可设置 PYTORCH_INDEX_URL
-DEBIAN_APT_MIRROR=https://mirrors.aliyun.com/debian \
-PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-bash scripts/build-images.sh worker
-
-# GPU Worker: CUDA 基础镜像、Ubuntu apt 源；默认只走 pip 源
-CUDA_BASE_IMAGE=registry.example.com/nvidia/cuda:12.4.1-runtime-ubuntu22.04 \
-UBUNTU_APT_MIRROR=https://mirrors.aliyun.com/ubuntu \
-PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-bash scripts/build-images.sh worker-gpu
-
-# Nginx: Nginx 基础镜像、Alpine 源
-NGINX_BASE_IMAGE=registry.example.com/library/nginx:1.27-alpine \
-ALPINE_MIRROR=https://mirrors.aliyun.com/alpine \
-bash scripts/build-images.sh nginx
-```
-
-前端 API 地址在容器启动时从环境变量注入，同一个 Web 镜像可以复用到不同环境：
-
-```bash
-IMAGE_REPOSITORY=registry.example.com/mineru \
-IMAGE_TAG=v1.0.0 \
-bash scripts/build-images.sh web
-```
-
-生产启动时通过 `.env` 控制浏览器访问的 API 地址；留空表示使用当前域名，由 Nginx 反代 `/api`：
-
-```bash
-NEXT_PUBLIC_API_URL=
-# 或者显式指定
-NEXT_PUBLIC_API_URL=https://mineru.example.com
-```
-
-Worker 镜像支持构建参数：
-
-```bash
-TORCH_VERSION=2.7.0 bash scripts/build-images.sh worker
-CUDA_VERSION=cu124 bash scripts/build-images.sh worker-gpu
-```
-
-`worker` 和 `worker-gpu` 不在构建阶段下载 MinerU 模型。GPU worker 镜像也不会把模型打进去，生产运行时从主机挂载：
+## 架构
 
 ```text
-MINERU_MODELS_HOST_PATH=/data/mineru-models
-MINERU_CONFIG_HOST_PATH=/data/mineru.json
+浏览器 ──> Next.js / Nginx ──> FastAPI ──> PostgreSQL
+   │                           │
+   └── 预签名 URL 直传 ────────> S3 / MinIO
+                               │
+                               └── Redis / Celery ──> MinerU Worker
+                                                      └── 挂载的本地模型目录
 ```
 
-容器内固定挂载到 `/opt/mineru-models` 和 `/root/mineru.json`。运行时默认设置 `MINERU_MODEL_SOURCE=local`、`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1`，不会尝试联网下载模型。
+API 创建任务后，Worker 从对象存储读取源文件，调用 MinerU 4.0.9 CLI，并将结果写回对象存储。WebSocket 提供任务进度；任务详情页读取预览内容与结果下载地址。
 
-`docker-compose.yml` 也已绑定同一套镜像变量。构建或部署指定版本：
+## API 入口
 
-```bash
-IMAGE_REPOSITORY=registry.example.com/mineru IMAGE_TAG=v1.0.0 docker compose build api web
-IMAGE_REPOSITORY=registry.example.com/mineru IMAGE_TAG=v1.0.0 docker compose up -d
-```
+| 路径 | 用途 |
+|---|---|
+| `POST /api/v1/auth/login` | 本地登录 |
+| `POST /api/v1/tasks/upload-url` | 申请预签名上传 URL |
+| `POST /api/v1/tasks/`、`GET /api/v1/tasks/` | 创建与查询任务 |
+| `GET /api/v1/tasks/{id}/preview` | 读取解析预览 |
+| `GET /api/v1/tasks/{id}/results` | 获取结果文件 |
+| `POST /api/v1/tasks/batch/upload-urls`、`POST /api/v1/tasks/batch/tasks` | 批量上传准备与任务创建 |
+| `POST /file_parse`、`POST /tasks` | 项目保留的旧式兼容入口 |
 
----
+兼容入口服务于已有调用方，接口形状与官方 MinerU 4.0 的 V1 API 不相同。完整配置项见 [`.env.example`](.env.example)，镜像构建脚本见 [`scripts/build-images.sh`](scripts/build-images.sh)。
 
-## 目录结构
+## 运行记录
 
-```
-mineru-enterprise/
-├── backend/                    # FastAPI 后端
-│   ├── main.py                 # 应用入口
-│   ├── alembic/                # 数据库迁移
-│   │   ├── versions/           # 迁移脚本
-│   │   └── env.py              # Alembic 配置
-│   ├── alembic.ini             # Alembic 入口
-│   ├── app/
-│   │   ├── api/v1/endpoints/   # API 路由
-│   │   │   ├── auth.py         # 认证（本地 + SSO）
-│   │   │   ├── tasks.py        # 文件上传 + 任务管理 + 批量 + 预览
-│   │   │   ├── users.py        # 用户信息
-│   │   │   └── ws.py           # WebSocket 进度推送
-│   │   ├── core/
-│   │   │   ├── config.py       # 所有配置项（从环境变量读取）
-│   │   │   ├── database.py     # 数据库连接
-│   │   │   ├── security.py     # JWT / 密码哈希
-│   │   │   └── deps.py         # FastAPI 依赖注入
-│   │   ├── models/models.py    # SQLAlchemy ORM 模型
-│   │   ├── schemas/schemas.py  # Pydantic 请求/响应模型
-│   │   ├── services/
-│   │   │   ├── storage.py      # S3 通用存储服务
-│   │   │   └── sso.py          # SSO 适配器（OIDC/LDAP/企微/钉钉）
-│   │   └── workers/
-│   │       └── parse_worker.py # Celery 任务（调用 MinerU，全参数支持）
-│   ├── Dockerfile              # API 服务镜像
-│   ├── Dockerfile.worker       # Worker 镜像（CPU，含 MinerU）
-│   └── Dockerfile.worker.gpu   # Worker 镜像（GPU，CUDA + MinerU）
-│
-├── frontend/                   # Next.js 14 前端
-│   └── src/
-│       ├── app/
-│       │   ├── login/page.tsx  # 登录页（本地 + SSO 按钮）
-│       │   └── dashboard/
-│       │       ├── page.tsx    # 主控制台
-│       │       └── tasks/[taskId]/page.tsx  # 任务详情 + 在线预览
-│       ├── components/
-│       │   ├── upload/         # 文件拖拽上传（全格式 + 高级解析选项）
-│       │   └── tasks/          # 任务列表（WebSocket 实时进度）
-│       └── lib/
-│           ├── api.ts          # API 客户端（axios + 自动刷新 token + 批量 API）
-│           └── auth-store.ts   # 认证状态管理（Zustand）
-│
-├── docker/
-│   └── nginx.conf              # Nginx 反向代理配置
-├── docker-compose.yml          # 完整编排文件
-├── .env.example                # 配置模板
-└── scripts/start.sh            # 一键启动脚本
-```
-
----
-
-## API 概览
-
-### 认证
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/auth/login` | 本地登录 |
-| POST | `/api/v1/auth/register` | 注册 |
-| POST | `/api/v1/auth/refresh` | 刷新 Token |
-| GET | `/api/v1/auth/sso/{provider}/authorize` | SSO 授权跳转 |
-| POST | `/api/v1/auth/sso/callback` | SSO 回调 |
-
-### 文件上传 & 任务
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/tasks/upload-url` | 获取单个预签名上传 URL |
-| POST | `/api/v1/tasks/` | 创建解析任务 |
-| GET | `/api/v1/tasks/` | 任务列表 |
-| GET | `/api/v1/tasks/{id}` | 任务详情 |
-| GET | `/api/v1/tasks/{id}/results` | 获取下载链接 |
-| GET | `/api/v1/tasks/{id}/preview` | **在线预览内容** |
-| DELETE | `/api/v1/tasks/{id}` | 取消任务 |
-| POST | `/api/v1/tasks/batch/upload-urls` | **批量预签名 URL（≤100）** |
-| POST | `/api/v1/tasks/batch/tasks` | **批量创建任务（≤100）** |
-
-### MinerU 官方兼容 API
-
-输入格式与官方 FastAPI 对齐：PDF、图片（PNG / JPEG / JP2 / WebP / GIF / BMP / JPG / TIFF）、DOCX、PPTX、XLSX。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/file_parse` | 同步解析，表单参数对齐官方 MinerU FastAPI |
-| POST | `/tasks` | 异步提交解析任务 |
-| GET | `/tasks/{task_id}` | 查询任务状态 |
-| GET | `/tasks/{task_id}/result` | 获取任务结果 |
-
-### 任务创建参数
-
-```json
-{
-  "s3_key": "uploads/xxx/file.pdf",
-  "original_filename": "report.pdf",
-  "file_size_bytes": 5242880,
-  "backend": "pipeline",         // pipeline/basic | hybrid/standard | vlm/advanced
-  "output_format": "markdown",    // markdown | json | both | docx | html | latex
-  "language": "ch",               // ch | en | japan | korean | latin | arabic | ...
-  "is_ocr": null,                 // null=自动, true=强制, false=关闭
-  "enable_formula": true,
-  "enable_table": true,
-  "page_ranges": "1-10"           // 可选，如 "2,4-6"
-}
-```
-
----
-
-## SSO 配置
-
-### OIDC（Keycloak / Azure AD / Okta）
-
-```env
-OIDC_ENABLED=true
-OIDC_ISSUER=https://keycloak.example.com/realms/company
-OIDC_CLIENT_ID=mineru-enterprise
-OIDC_CLIENT_SECRET=your-secret
-```
-
-### LDAP / Active Directory
-
-```env
-LDAP_ENABLED=true
-LDAP_SERVER=ldap://ldap.example.com:389
-LDAP_BIND_DN=cn=admin,dc=example,dc=com
-LDAP_BIND_PASSWORD=password
-LDAP_BASE_DN=dc=example,dc=com
-```
-
-### 企业微信
-
-```env
-WECHAT_WORK_ENABLED=true
-WECHAT_WORK_CORP_ID=ww_xxx
-WECHAT_WORK_AGENT_ID=1000001
-WECHAT_WORK_SECRET=your-secret
-```
-
-### 钉钉
-
-```env
-DINGTALK_ENABLED=true
-DINGTALK_APP_KEY=your-app-key
-DINGTALK_APP_SECRET=your-app-secret
-```
-
----
-
-## S3 存储配置
-
-### MinIO（自托管，推荐内网）
-
-```env
-S3_ENDPOINT_URL=http://minio:9000
-S3_ACCESS_KEY_ID=minioadmin
-S3_SECRET_ACCESS_KEY=minioadmin
-S3_BUCKET_NAME=mineru-enterprise
-```
-
-### AWS S3
-
-```env
-# S3_ENDPOINT_URL 留空
-S3_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-S3_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG
-S3_REGION_NAME=ap-southeast-1
-```
-
-### 阿里云 OSS
-
-```env
-S3_ENDPOINT_URL=https://oss-cn-hangzhou.aliyuncs.com
-S3_ACCESS_KEY_ID=your-access-key
-S3_SECRET_ACCESS_KEY=your-secret-key
-S3_REGION_NAME=cn-hangzhou
-```
-
----
-
-## 环境要求
-
-- Docker 24+，Docker Compose v2+
-- GPU 支持（可选）：NVIDIA Docker runtime（`nvidia-container-toolkit`）
-- 内存：>= 8 GB（CPU 模式），>= 16 GB（GPU 模式）
-
----
-
-## License
-
-MIT
+本地 ARM64 CPU 环境已用 MinerU 4.0.9 验证：ONNX Basic 模型校验通过；GGUF VLM 模型校验通过，并完成一页 PDF 的 Advanced 解析。该环境没有 CUDA，VLM 单页示例耗时约 54 秒。此记录仅说明本地路径可运行，不代表其他硬件的吞吐量或 GPU 镜像已验证。
