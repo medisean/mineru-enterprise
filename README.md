@@ -9,18 +9,20 @@
 ## 当前能力
 
 - **解析任务**：PDF、常见图片和 Office 文件上传，Celery + Redis 异步处理，支持批量创建、状态查询、取消、重试和结果下载。
-- **解析内核**：CPU 与 GPU Worker 均固定依赖 MinerU **4.0.9**。后端接受 `flash`、`basic`、`standard`、`advanced`，并映射旧名称 `pipeline`、`hybrid`、`vlm`。
+- **解析内核**：CPU 与 GPU Worker 均固定依赖 MinerU **4.0.10**。后端接受 `flash`、`basic`、`standard`、`advanced`，并映射旧名称 `pipeline`、`hybrid`、`vlm`。
 - **结果查看**：任务详情提供源文件与 Markdown 对照预览、复制和下载；后台还提供任务记录与统计。
 - **身份与存储**：本地账号、OIDC、LDAP、企业微信、钉钉；预签名 URL 直传 S3 兼容存储，可使用 MinIO。
 - **部署**：Docker Compose 编排 Next.js、FastAPI、PostgreSQL、Redis、MinIO、Nginx 和 Worker；可选 NVIDIA GPU 服务。
 
-## 与官方 MinerU 4.0.9 对比
+## 与官方 MinerU 4.0.10 对比
 
-这里的“官方”指 [opendatalab/MinerU 4.0.9 开源版](https://github.com/opendatalab/MinerU/tree/mineru-4.0.9-released)，不是 MinerU 云服务。官方 4.0 本身已有 WebUI、自托管 V1 API、批量解析和 Docker 部署；本项目侧重多人任务管理与对象存储集成。对比依据：[官方 4.0.9 README](https://github.com/opendatalab/MinerU/blob/mineru-4.0.9-released/README.md)、[4.0.9 发布说明](https://github.com/opendatalab/MinerU/releases/tag/mineru-4.0.9-released)。
+这里的“官方”指 [opendatalab/MinerU 4.0.10 开源版](https://github.com/opendatalab/MinerU/tree/mineru-4.0.10-released)，不是 MinerU 云服务。官方 4.0 本身已有 WebUI、自托管 V1 API、批量解析和 Docker 部署；本项目侧重多人任务管理与对象存储集成。对比依据：[官方 4.0.10 README](https://github.com/opendatalab/MinerU/blob/mineru-4.0.10-released/README.md)、[4.0.10 发布说明](https://github.com/opendatalab/MinerU/releases/tag/mineru-4.0.10-released)。
 
-| 能力 | 官方 MinerU 4.0.9 | 本项目 |
+4.0.10 的新增修复针对官方 WebUI 在非安全 HTTP 环境下无法使用 `crypto.randomUUID` 的情况；本项目使用独立的 Next.js 前端，因此该 WebUI 修复不直接改变本项目界面。
+
+| 能力 | 官方 MinerU 4.0.10 | 本项目 |
 |---|---|---|
-| 解析内核 | 官方 4.0.9 | Worker 使用同版本的 `mineru-kit parse` |
+| 解析内核 | 官方 4.0.10 | Worker 使用同版本的 `mineru-kit parse` |
 | 输入 | PDF、图片、Office、OpenDocument、RTF、EPUB、OFD、HTML/MHTML、CSV/TSV 等 | Web 上传：PDF、图片、DOCX、PPTX、XLSX；后端还接受旧 Office 格式和 HTML。MHTML、EPUB、OFD、CSV/TSV 等尚未接入上传入口 |
 | 解析档位 | `flash` / `basic` / `standard` / `advanced` | 后端接受四档；当前 Web 界面提供 Pipeline（映射 `basic`）和 VLM（映射 `advanced`）。Office/HTML 在 Worker 中使用 `flash` |
 | 输出 | 统一文档模型，按接口导出 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、结构化内容等 | 任务保存 MinerU 解析结果并提供 Markdown/JSON；可从 Markdown 生成简易 HTML、DOCX、LaTeX，保真度不等同于官方对应渲染器 |
@@ -75,7 +77,7 @@ docker compose --profile minio --profile proxy run --rm worker \
   mineru-kit models download MinerU2.5-Pro-2605-1.2B-GGUF --source modelscope
 ```
 
-模型来源也可按官方 [模型配置文档](https://github.com/opendatalab/MinerU/blob/mineru-4.0.9-released/docs/en/usage/model_source.md) 选择 Hugging Face。GPU 部署需要按所用推理引擎准备对应权重；以上 GGUF 示例针对本地 llama.cpp。
+模型来源也可按官方 [模型配置文档](https://github.com/opendatalab/MinerU/blob/mineru-4.0.10-released/docs/en/usage/model_source.md) 选择 Hugging Face。GPU 部署需要按所用推理引擎准备对应权重；以上 GGUF 示例针对本地 llama.cpp。
 
 ### 4. 使用
 
@@ -92,7 +94,7 @@ docker compose --profile minio --profile proxy run --rm worker \
                                                       └── 挂载的本地模型目录
 ```
 
-API 创建任务后，Worker 从对象存储读取源文件，调用 MinerU 4.0.9 CLI，并将结果写回对象存储。WebSocket 提供任务进度；任务详情页读取预览内容与结果下载地址。
+API 创建任务后，Worker 从对象存储读取源文件，调用 MinerU 4.0.10 CLI，并将结果写回对象存储。WebSocket 提供任务进度；任务详情页读取预览内容与结果下载地址。
 
 ## API 入口
 
@@ -110,4 +112,4 @@ API 创建任务后，Worker 从对象存储读取源文件，调用 MinerU 4.0.
 
 ## 运行记录
 
-本地 ARM64 CPU 环境已用 MinerU 4.0.9 验证：ONNX Basic 模型校验通过；GGUF VLM 模型校验通过，并完成一页 PDF 的 Advanced 解析。该环境没有 CUDA，VLM 单页示例耗时约 54 秒。此记录仅说明本地路径可运行，不代表其他硬件的吞吐量或 GPU 镜像已验证。
+本地 ARM64 CPU 环境已用 MinerU 4.0.10 验证：ONNX Basic 模型校验通过；GGUF VLM 模型校验通过，并完成一页 PDF 的 Advanced 解析。该环境没有 CUDA，VLM 单页示例耗时约 48 秒。此记录仅说明本地路径可运行，不代表其他硬件的吞吐量或 GPU 镜像已验证。

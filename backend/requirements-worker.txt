@@ -1,9 +1,9 @@
 # Includes all API requirements + MinerU
 -r requirements.txt
 
-# MinerU 4.0.9 — official CLI/API entry points and V1 parse protocol.
+# MinerU 4.0.10 — official CLI/API entry points and V1 parse protocol.
 # The GPU image adds the full VLM stack separately.
-mineru[torch]==4.0.9
+mineru[torch]==4.0.10
 
 # Explicit for layered/container installs.
 accelerate>=1.5.1,<2

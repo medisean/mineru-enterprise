@@ -48,7 +48,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python3 -m pip config set global.index-url 
         python3 -m pip install --no-cache-dir --break-system-packages torch==${TORCH_VERSION} torchvision; \
     fi
 
-# ── Install MinerU 4.0.9 with the official VLM stack ────────────────────────
+# ── Install MinerU 4.0.10 with the official VLM stack ───────────────────────
 COPY requirements.txt requirements-worker.txt requirements-worker-gpu.txt ./
 RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements-worker-gpu.txt
 
