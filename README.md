@@ -1,43 +1,45 @@
 # MinerU Enterprise
 
-基于 [MinerU](https://github.com/opendatalab/MinerU) 解析内核的自托管文档处理平台。项目将解析能力接入账号、任务队列、对象存储和管理界面，适合需要多人使用、留存结果并自行管理文件的场景。本项目由社区独立维护，不属于 MinerU 官方仓库。
+**English** | [简体中文](README.zh-CN.md)
 
-![上传、解析和预览流程示意](docs/assets/workflow.gif)
+A self-hosted document processing application built around the [MinerU](https://github.com/opendatalab/MinerU) parser. It adds user accounts, asynchronous jobs, object storage, and an administration UI for teams that need to manage their own documents and results. This is an independent community project, not an official MinerU repository.
 
-> GIF 为根据当前界面绘制的流程示意，使用虚构文件；实际运行画面与任务耗时取决于部署环境。
+![Illustrated upload-to-preview workflow](docs/assets/workflow.gif)
 
-## 当前能力
+> The GIF illustrates the current UI flow with a fictional file. It is not a recording of a real document or a performance benchmark.
 
-- **解析任务**：PDF、常见图片和 Office 文件上传，Celery + Redis 异步处理，支持批量创建、状态查询、取消、重试和结果下载。
-- **解析内核**：CPU 与 GPU Worker 均固定依赖 MinerU **4.0.10**。后端接受 `flash`、`basic`、`standard`、`advanced`，并映射旧名称 `pipeline`、`hybrid`、`vlm`。
-- **结果查看**：任务详情提供源文件与 Markdown 对照预览、复制和下载；后台还提供任务记录与统计。
-- **身份与存储**：本地账号、OIDC、LDAP、企业微信、钉钉；预签名 URL 直传 S3 兼容存储，可使用 MinIO。
-- **部署**：Docker Compose 编排 Next.js、FastAPI、PostgreSQL、Redis、MinIO、Nginx 和 Worker；可选 NVIDIA GPU 服务。
+## What this repository provides
 
-## 与官方 MinerU 4.0.10 对比
+- **Parsing jobs:** Upload PDFs, common images, and Office files; create jobs in batches; track, cancel, retry, preview, and download results. Celery and Redis run the queue.
+- **MinerU runtime:** CPU and GPU worker dependencies are pinned to **MinerU 4.0.10**. The backend accepts `flash`, `basic`, `standard`, and `advanced`, plus legacy names such as `pipeline`, `hybrid`, and `vlm`.
+- **Review UI:** The Next.js task detail page shows the source document beside the Markdown result. The admin UI provides job history and statistics.
+- **Identity and storage:** Local accounts, optional OIDC/LDAP/WeCom/DingTalk sign-in, and presigned uploads to S3-compatible storage such as MinIO.
+- **Deployment:** Docker Compose runs Next.js, FastAPI, PostgreSQL, Redis, MinIO, Nginx, and the workers. An NVIDIA GPU profile is available.
 
-这里的“官方”指 [opendatalab/MinerU 4.0.10 开源版](https://github.com/opendatalab/MinerU/tree/mineru-4.0.10-released)，不是 MinerU 云服务。官方 4.0 本身已有 WebUI、自托管 V1 API、批量解析和 Docker 部署；本项目侧重多人任务管理与对象存储集成。对比依据：[官方 4.0.10 README](https://github.com/opendatalab/MinerU/blob/mineru-4.0.10-released/README.md)、[4.0.10 发布说明](https://github.com/opendatalab/MinerU/releases/tag/mineru-4.0.10-released)。
+## Comparison with upstream MinerU
 
-4.0.10 的新增修复针对官方 WebUI 在非安全 HTTP 环境下无法使用 `crypto.randomUUID` 的情况；本项目使用独立的 Next.js 前端，因此该 WebUI 修复不直接改变本项目界面。
+“Upstream” here means the [open-source MinerU 4.0.10 repository](https://github.com/opendatalab/MinerU/tree/mineru-4.0.10-released), not the MinerU cloud service. Upstream already has a WebUI, a self-hosted V1 API, batch parsing, and Docker deployment. This project adds an application layer for team accounts, persistent jobs, and object storage. Sources: [upstream README](https://github.com/opendatalab/MinerU/blob/mineru-4.0.10-released/README.md) and [4.0.10 release notes](https://github.com/opendatalab/MinerU/releases/tag/mineru-4.0.10-released).
 
-| 能力 | 官方 MinerU 4.0.10 | 本项目 |
+The 4.0.10 release fixes UUID generation in the upstream WebUI on non-secure HTTP origins. This project has a separate Next.js UI, so that particular WebUI fix does not directly change its frontend.
+
+| Capability | Upstream MinerU 4.0.10 | MinerU Enterprise |
 |---|---|---|
-| 解析内核 | 官方 4.0.10 | Worker 使用同版本的 `mineru-kit parse` |
-| 输入 | PDF、图片、Office、OpenDocument、RTF、EPUB、OFD、HTML/MHTML、CSV/TSV 等 | Web 上传：PDF、图片、DOCX、PPTX、XLSX；后端还接受旧 Office 格式和 HTML。MHTML、EPUB、OFD、CSV/TSV 等尚未接入上传入口 |
-| 解析档位 | `flash` / `basic` / `standard` / `advanced` | 后端接受四档；当前 Web 界面提供 Pipeline（映射 `basic`）和 VLM（映射 `advanced`）。Office/HTML 在 Worker 中使用 `flash` |
-| 输出 | 统一文档模型，按接口导出 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、结构化内容等 | 任务保存 MinerU 解析结果并提供 Markdown/JSON；可从 Markdown 生成简易 HTML、DOCX、LaTeX，保真度不等同于官方对应渲染器 |
-| WebUI | 官方 Gradio WebUI | Next.js 上传、任务列表、源文件与结果对照预览、管理页面 |
-| API | 官方 `/v1/*` 解析服务、SDK、Router | 自有 `/api/v1/*`、`/api/v4/extract/*` 和旧式 `/tasks`、`/file_parse` 兼容入口；**尚不实现官方 4.0 的 `/v1/*` 协议** |
-| 本地文档库 | 搜索、缓存、页/块定位与继续阅读 | 尚未接入官方 doclib；以任务和结果文件为中心 |
-| 多人协作 | 官方开源 CLI、服务和 WebUI | 账号、角色、管理后台、API Token、可选 SSO 与组织数据模型 |
-| 任务与存储 | 官方无状态批处理、V1 作业与本地文档库 | Celery 队列、任务历史、WebSocket 进度、S3 兼容对象存储 |
-| 部署 | 官方提供本地运行与 Docker 方案 | Compose 部署完整应用栈，可选 CPU/GPU Worker |
+| Parser | MinerU 4.0.10 | Workers invoke the same-version `mineru-kit parse` CLI |
+| Inputs | PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML/MHTML, CSV/TSV, and more | The Web uploader accepts PDF, images, DOCX, PPTX, and XLSX. Backend endpoints also accept older Office formats and HTML. MHTML, EPUB, OFD, and CSV/TSV are not wired into upload |
+| Quality tiers | `flash` / `basic` / `standard` / `advanced` | Backend accepts all four. The Web UI offers Pipeline (mapped to `basic`) and VLM (mapped to `advanced`). Office and HTML are routed to `flash` |
+| Outputs | Shared document model with Markdown, HTML, LaTeX, DOCX, EPUB, PDF, and structured export targets, depending on interface | Jobs retain MinerU results and expose Markdown/JSON. Optional HTML, DOCX, and LaTeX files are simple conversions from Markdown, not equivalent to upstream's corresponding renderers |
+| Web interface | Gradio WebUI | Next.js upload, job list, side-by-side source/result preview, and administration |
+| API | V1 `/v1/*` service, SDK, Router | Project-specific `/api/v1/*` and `/api/v4/extract/*` routes, plus legacy-style `/tasks` and `/file_parse` endpoints. **The upstream 4.0 `/v1/*` protocol is not implemented** |
+| Document library | Search, caching, page/block locators, and continuation | Upstream doclib is not integrated; this application stores jobs and result files |
+| Team features | Open-source CLI, service, and WebUI | Accounts, roles, admin UI, API tokens, optional SSO, and an organization data model |
+| Jobs and storage | Stateless batch conversion, V1 jobs, local document library | Celery queue, job history, WebSocket progress, S3-compatible object storage |
+| Deployment | Local and Docker options | Compose application stack with optional CPU/GPU workers |
 
-**参数边界**：当前 Worker 会将档位、OCR 模式、PDF 页码范围和图像分析选项传给 MinerU 4.0 CLI。前端和 API 仍接收语言、公式、表格开关，但这些字段目前没有映射到 4.0 CLI 的独立参数；请勿将它们视为已生效的解析控制项。
+**Parameter boundary:** The worker passes tier, OCR mode, PDF page ranges, and image-analysis selection to the MinerU 4.0 CLI. The UI and API still accept language, formula, and table switches, but the current worker does not map those fields to independent 4.0 CLI options. Do not rely on those switches to change parsing behavior.
 
-## 快速开始
+## Quick start
 
-### 1. 克隆并配置
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/medisean/mineru-enterprise.git
@@ -45,71 +47,80 @@ cd mineru-enterprise
 cp .env.example .env
 ```
 
-编辑 `.env`，至少更换 `SECRET_KEY`、PostgreSQL 和 MinIO 的默认口令，并按部署环境配置对外地址。模型文件不打入镜像；设置 `MINERU_MODELS_HOST_PATH` 指向主机上的持久目录，例如：
+Edit `.env`. At minimum, replace the example `SECRET_KEY`, PostgreSQL password, and MinIO password, and set public URLs for your deployment. Models are mounted at runtime rather than baked into images. Point `MINERU_MODELS_HOST_PATH` at a persistent host directory:
 
 ```env
 MINERU_MODELS_HOST_PATH=/data/mineru-models
 ```
 
-该目录会挂载为容器内的 `/opt/mineru-models`。在外接硬盘部署时，可填入外接盘上的**绝对路径**。模型下载和校验均在这个挂载目录进行。
+The host directory is mounted at `/opt/mineru-models` inside the worker. An absolute path on an external drive works as well.
 
-### 2. 构建并启动
+### 2. Build and start
 
 ```bash
 docker compose --profile minio --profile proxy up -d --build
 ```
 
-访问 `http://localhost`。前端直连端口为 `3000`，API 直连端口为 `8000`，MinIO 控制台为 `9001`。本地开发如需 FastAPI 文档，可在 `.env` 中设 `DEBUG=true` 后重启 API，再访问 `http://localhost/api/docs`。
+Open `http://localhost`. Direct ports are `3000` for the frontend, `8000` for the API, and `9001` for the MinIO console. To expose FastAPI's interactive docs locally, set `DEBUG=true` in `.env`, restart the API, and open `http://localhost/api/docs`.
 
-也可使用 `bash scripts/start.sh dev`；GPU 服务器使用 `bash scripts/start.sh gpu`，需 NVIDIA 驱动和 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)。
+`bash scripts/start.sh dev` starts the development profile. On an NVIDIA host, `bash scripts/start.sh gpu` enables the GPU profile; it requires an NVIDIA driver and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
-### 3. 准备本地模型
+### 3. Download local models
 
-Worker 默认从挂载目录读取模型（`MINERU_MODEL_SOURCE=local`）。首次解析前，下载适合所选档位的模型：
+Workers default to `MINERU_MODEL_SOURCE=local` and read models from the mounted directory. Prepare the models needed by your selected tier:
 
 ```bash
-# CPU Basic：ONNX 小模型
+# CPU Basic: ONNX small models
 docker compose --profile minio --profile proxy run --rm worker \
   mineru-kit models download --tier basic --small-backend onnx --source modelscope
 
-# 本地 llama.cpp VLM：供 Standard / Advanced 使用
+# Local llama.cpp VLM: for Standard / Advanced
 docker compose --profile minio --profile proxy run --rm worker \
   mineru-kit models download MinerU2.5-Pro-2605-1.2B-GGUF --source modelscope
 ```
 
-模型来源也可按官方 [模型配置文档](https://github.com/opendatalab/MinerU/blob/mineru-4.0.10-released/docs/en/usage/model_source.md) 选择 Hugging Face。GPU 部署需要按所用推理引擎准备对应权重；以上 GGUF 示例针对本地 llama.cpp。
+See [upstream model configuration](https://github.com/opendatalab/MinerU/blob/mineru-4.0.10-released/docs/en/usage/model_source.md) for other sources such as Hugging Face. GPU deployments need weights appropriate for the selected inference engine; the GGUF example above is for local llama.cpp.
 
-### 4. 使用
+### 4. Submit a job
 
-在网页注册或登录，上传文件并选择解析引擎；任务完成后进入详情页查看原文、Markdown 和下载结果。Web 界面单次最多选择 100 个文件，单文件上传上限默认 50 MB；实际解析还受页数、模型、硬件和服务配置限制。
+Register or sign in, upload a file, and choose a parser in the Web UI. Open the completed job for source/Markdown preview and downloads. The Web UI allows up to 100 files in one selection; the default per-file upload limit is 50 MB. Page limits, models, hardware, and service configuration impose additional constraints.
 
-## 架构
+## Architecture
 
 ```text
-浏览器 ──> Next.js / Nginx ──> FastAPI ──> PostgreSQL
-   │                           │
-   └── 预签名 URL 直传 ────────> S3 / MinIO
-                               │
-                               └── Redis / Celery ──> MinerU Worker
-                                                      └── 挂载的本地模型目录
+Browser ──> Next.js / Nginx ──> FastAPI ──> PostgreSQL
+   │                              │
+   └── presigned upload URL ──────> S3 / MinIO
+                                  │
+                                  └── Redis / Celery ──> MinerU worker
+                                                         └── mounted model directory
 ```
 
-API 创建任务后，Worker 从对象存储读取源文件，调用 MinerU 4.0.10 CLI，并将结果写回对象存储。WebSocket 提供任务进度；任务详情页读取预览内容与结果下载地址。
+FastAPI creates a job, the worker reads its source from object storage, invokes the MinerU 4.0.10 CLI, and writes results back to object storage. WebSocket updates job progress. The detail page loads previews and result download URLs.
 
-## API 入口
+## API entry points
 
-| 路径 | 用途 |
+| Route | Purpose |
 |---|---|
-| `POST /api/v1/auth/login` | 本地登录 |
-| `POST /api/v1/tasks/upload-url` | 申请预签名上传 URL |
-| `POST /api/v1/tasks/`、`GET /api/v1/tasks/` | 创建与查询任务 |
-| `GET /api/v1/tasks/{id}/preview` | 读取解析预览 |
-| `GET /api/v1/tasks/{id}/results` | 获取结果文件 |
-| `POST /api/v1/tasks/batch/upload-urls`、`POST /api/v1/tasks/batch/tasks` | 批量上传准备与任务创建 |
-| `POST /file_parse`、`POST /tasks` | 项目保留的旧式兼容入口 |
+| `POST /api/v1/auth/login` | Local sign-in |
+| `POST /api/v1/tasks/upload-url` | Request a presigned upload URL |
+| `POST /api/v1/tasks/`, `GET /api/v1/tasks/` | Create and list jobs |
+| `GET /api/v1/tasks/{id}/preview` | Read a result preview |
+| `GET /api/v1/tasks/{id}/results` | List result files |
+| `POST /api/v1/tasks/batch/upload-urls`, `POST /api/v1/tasks/batch/tasks` | Prepare and create batch jobs |
+| `POST /file_parse`, `POST /tasks` | Legacy-style compatibility endpoints |
 
-兼容入口服务于已有调用方，接口形状与官方 MinerU 4.0 的 V1 API 不相同。完整配置项见 [`.env.example`](.env.example)，镜像构建脚本见 [`scripts/build-images.sh`](scripts/build-images.sh)。
+The compatibility endpoints support existing clients; they do not implement upstream MinerU 4.0's V1 contract. See [`.env.example`](.env.example) for configuration and [`scripts/build-images.sh`](scripts/build-images.sh) for per-service image builds.
 
-## 运行记录
+## Developer map
 
-本地 ARM64 CPU 环境已用 MinerU 4.0.10 验证：ONNX Basic 模型校验通过；GGUF VLM 模型校验通过，并完成一页 PDF 的 Advanced 解析。该环境没有 CUDA，VLM 单页示例耗时约 48 秒。此记录仅说明本地路径可运行，不代表其他硬件的吞吐量或 GPU 镜像已验证。
+- [`frontend/src/app/`](frontend/src/app/) contains Next.js pages and routes; [`frontend/src/components/`](frontend/src/components/) contains upload, job-list, and preview components.
+- [`backend/app/api/v1/endpoints/`](backend/app/api/v1/endpoints/) contains auth, job, admin, and compatibility APIs. [`backend/app/services/mineru_compat.py`](backend/app/services/mineru_compat.py) builds MinerU 4.x commands and adapts result files.
+- [`backend/app/workers/parse_worker.py`](backend/app/workers/parse_worker.py) runs asynchronous parsing; [`backend/app/services/storage.py`](backend/app/services/storage.py) handles S3-compatible storage.
+- [`docker-compose.yml`](docker-compose.yml) defines services and profiles; [`scripts/build-images.sh`](scripts/build-images.sh) builds individual images.
+
+When changing parser behavior, review both the CLI option mapping in `mineru_compat.py` and result handling in the worker. When adding an input format, check the Web uploader, backend extension and file-signature validation, and upstream MinerU's accepted formats together.
+
+## Local verification
+
+MinerU 4.0.10 was checked on an ARM64 CPU host: the ONNX Basic model bundle and GGUF VLM bundle verified successfully, and Advanced parsed a one-page PDF. That VLM sample took about 48 seconds without CUDA. This records a local path, not a throughput guarantee or GPU-image verification.
